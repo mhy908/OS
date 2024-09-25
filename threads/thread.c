@@ -28,6 +28,10 @@
    that are ready to run but not actually running. */
 static struct list ready_list;
 
+//mhy908
+// No static keyword, so that it is shared.
+struct list sleep_list;
+
 /* Idle thread. */
 static struct thread *idle_thread;
 
@@ -109,6 +113,9 @@ thread_init (void) {
 	lock_init (&tid_lock);
 	list_init (&ready_list);
 	list_init (&destruction_req);
+
+	//mhy908
+	list_init (&sleep_list);
 
 	/* Set up a thread structure for the running thread. */
 	initial_thread = running_thread ();
@@ -402,6 +409,11 @@ init_thread (struct thread *t, const char *name, int priority) {
 	ASSERT (t != NULL);
 	ASSERT (PRI_MIN <= priority && priority <= PRI_MAX);
 	ASSERT (name != NULL);
+
+	//mhy908
+	t->locked_from=NULL;
+	list_init(&(t->lock_list));
+	t->cur_priority=priority;
 
 	memset (t, 0, sizeof *t);
 	t->status = THREAD_BLOCKED;

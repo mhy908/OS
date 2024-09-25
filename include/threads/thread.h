@@ -92,6 +92,15 @@ struct thread {
 	char name[16];                      /* Name (for debugging purposes). */
 	int priority;                       /* Priority. */
 
+	//mhy908
+	int cur_priority;					/*For priority_scheduling : modified priority*/
+	//Solve by TreeDP, cur_priority=max(priority, cur_priority of threads in lock_list)
+
+	int64_t ticks;						/*For alarm clocks*/
+	struct thread* locked_from;			/*Thread that is locked from*/
+	struct list lock_list;				/*List of threads that are locked by this*/
+	struct list_elem lock_list_elem;	/*iterator of lock_list*/
+
 	/* Shared between thread.c and synch.c. */
 	struct list_elem elem;              /* List element. */
 
@@ -113,6 +122,7 @@ struct thread {
    If true, use multi-level feedback queue scheduler.
    Controlled by kernel command-line option "-o mlfqs". */
 extern bool thread_mlfqs;
+extern struct list sleep_list;
 
 void thread_init (void);
 void thread_start (void);
