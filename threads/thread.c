@@ -83,6 +83,13 @@ static tid_t allocate_tid (void);
 // setup temporal gdt first.
 static uint64_t gdt[3] = { 0, 0x00af9a000000ffff, 0x00cf92000000ffff };
 
+bool
+cmp_prior (struct list_elem *elem1, struct list_elem *elem2, void *aux UNUSED) {
+   struct thread * thread1 = list_entry (elem1, struct thread, elem);
+   struct thread * thread2 = list_entry (elem2, struct thread, elem);
+   return thread1 -> priority < thread2 -> priority;
+}
+
 /* Initializes the threading system by transforming the code
    that's currently running into a thread.  This can't work in
    general and it is possible in this case only because loader.S
@@ -214,6 +221,12 @@ thread_create (const char *name, int priority,
 	/* Add to run queue. */
 	thread_unblock (t);
 
+    // wooyechan
+    struct thread * curr_thread = thread_current();
+    if (t->priority > curr_thread->priority) {
+       thread_yield();
+    }
+
 	return tid;
 }
 
@@ -319,6 +332,17 @@ thread_yield (void) {
 void
 thread_set_priority (int new_priority) {
 	thread_current ()->priority = new_priority;
+
+    // wooyechan
+    struct list_elem * elem;
+    struct thread * max_thread;
+
+    elem = list_max(&ready_list, cmp_prior, NULL);
+    max_thread = list_entry (elem, struct thread, elem);
+    int max_priority = max_thread -> priority;
+    if (max_priority > new_priority) {
+       thread_yield();
+    }
 }
 
 /* Returns the current thread's priority. */
@@ -432,8 +456,18 @@ static struct thread *
 next_thread_to_run (void) {
 	if (list_empty (&ready_list))
 		return idle_thread;
-	else
-		return list_entry (list_pop_front (&ready_list), struct thread, elem);
+    else {
+    // wooyechan
+       struct list_elem * elem;      
+       struct thread * next_thread;
+
+       elem = list_max(&ready_list, cmp_prior, NULL);
+       next_thread = list_entry (elem , struct thread, elem);
+
+       list_remove (elem);
+
+       return next_thread;
+    }
 }
 
 /* Use iretq to launch the thread */
