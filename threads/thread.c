@@ -96,6 +96,7 @@ static uint64_t gdt[3] = { 0, 0x00af9a000000ffff, 0x00cf92000000ffff };
 
    It is not safe to call thread_current() until this function
    finishes. */
+
 void
 thread_init (void) {
 	ASSERT (intr_get_level () == INTR_OFF);
@@ -318,13 +319,19 @@ thread_yield (void) {
 /* Sets the current thread's priority to NEW_PRIORITY. */
 void
 thread_set_priority (int new_priority) {
-	thread_current ()->priority = new_priority;
+	//mhy908
+	struct thread *tcur=thread_current();
+	tcur->priority=tcur->cur_priority=new_priority;
+	
+	update_priority_climb(tcur);
+
+	thread_yield();
 }
 
 /* Returns the current thread's priority. */
 int
 thread_get_priority (void) {
-	return thread_current ()->priority;
+	return thread_current ()->cur_priority;
 }
 
 /* Sets the current thread's nice value to NICE. */
@@ -421,6 +428,13 @@ init_thread (struct thread *t, const char *name, int priority) {
 	t->tf.rsp = (uint64_t) t + PGSIZE - sizeof (void *);
 	t->priority = priority;
 	t->magic = THREAD_MAGIC;
+}
+
+//mhy908
+bool cmp_priority(const struct list_elem *a, const struct list_elem *b, void *aux UNUSED){
+	const struct thread *ta=list_entry(a, struct thread, elem);
+	const struct thread *tb=list_entry(b, struct thread, elem);
+	return ta->cur_priority<tb->cur_priority;
 }
 
 /* Chooses and returns the next thread to be scheduled.  Should
