@@ -101,6 +101,9 @@ struct thread {
 	struct list lock_list;				/*List of threads that are locked by this*/
 	struct list_elem lock_list_elem;	/*iterator of lock_list*/
 
+	//wooyechan
+	struct list locks; // locks that thread holds
+
 	/* Shared between thread.c and synch.c. */
 	struct list_elem elem;              /* List element. */
 
@@ -150,6 +153,8 @@ int thread_get_nice (void);
 void thread_set_nice (int);
 int thread_get_recent_cpu (void);
 int thread_get_load_avg (void);
+
+bool cmp_prior (const struct list_elem *elem1, const struct list_elem *elem2, void *aux);
 
 void do_iret (struct intr_frame *tf);
 

@@ -67,6 +67,9 @@ static void do_schedule(int status);
 static void schedule (void);
 static tid_t allocate_tid (void);
 
+//wooyechan
+bool cmp_prior (const struct list_elem *elem1, const struct list_elem *elem2, void *aux);
+
 /* Returns true if T appears to point to a valid thread. */
 #define is_thread(t) ((t) != NULL && (t)->magic == THREAD_MAGIC)
 
@@ -84,10 +87,10 @@ static tid_t allocate_tid (void);
 static uint64_t gdt[3] = { 0, 0x00af9a000000ffff, 0x00cf92000000ffff };
 
 bool
-cmp_prior (struct list_elem *elem1, struct list_elem *elem2, void *aux UNUSED) {
-   struct thread * thread1 = list_entry (elem1, struct thread, elem);
-   struct thread * thread2 = list_entry (elem2, struct thread, elem);
-   return thread1 -> priority < thread2 -> priority;
+cmp_prior (const struct list_elem *elem1, const struct list_elem *elem2, void *aux UNUSED) {
+   const struct thread * thread1 = list_entry (elem1, struct thread, elem);
+   const struct thread * thread2 = list_entry (elem2, struct thread, elem);
+   return thread1 -> cur_priority < thread2 -> cur_priority;
 }
 
 /* Initializes the threading system by transforming the code
@@ -223,7 +226,7 @@ thread_create (const char *name, int priority,
 
     // wooyechan
     struct thread * curr_thread = thread_current();
-    if (t->priority > curr_thread->priority) {
+    if (t->cur_priority > curr_thread->cur_priority) {
        thread_yield();
     }
 
@@ -331,15 +334,18 @@ thread_yield (void) {
 /* Sets the current thread's priority to NEW_PRIORITY. */
 void
 thread_set_priority (int new_priority) {
-	thread_current ()->priority = new_priority;
 
     // wooyechan
+	struct thread * curr_thread = thread_current();
     struct list_elem * elem;
     struct thread * max_thread;
 
+	curr_thread->priority = new_priority;
+	curr_thread->cur_priority = new_priority;
+
     elem = list_max(&ready_list, cmp_prior, NULL);
     max_thread = list_entry (elem, struct thread, elem);
-    int max_priority = max_thread -> priority;
+    int max_priority = max_thread -> cur_priority;
     if (max_priority > new_priority) {
        thread_yield();
     }
@@ -348,7 +354,7 @@ thread_set_priority (int new_priority) {
 /* Returns the current thread's priority. */
 int
 thread_get_priority (void) {
-	return thread_current ()->priority;
+	return thread_current ()->cur_priority;
 }
 
 /* Sets the current thread's nice value to NICE. */
@@ -444,6 +450,9 @@ init_thread (struct thread *t, const char *name, int priority) {
 	strlcpy (t->name, name, sizeof t->name);
 	t->tf.rsp = (uint64_t) t + PGSIZE - sizeof (void *);
 	t->priority = priority;
+	//wooyechan
+	list_init(&(t->locks));
+	t->cur_priority=priority;
 	t->magic = THREAD_MAGIC;
 }
 

@@ -18,6 +18,10 @@ void sema_self_test (void);
 
 /* Lock. */
 struct lock {
+	//wooyechan 
+	struct list_elem elem; // list_elem for thread -> locks
+	struct list thread_queue; // list for threads that waiting this lock
+
 	struct thread *holder;      /* Thread holding lock (for debugging). */
 	struct semaphore semaphore; /* Binary semaphore controlling access. */
 };
