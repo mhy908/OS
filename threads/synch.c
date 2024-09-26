@@ -188,6 +188,11 @@ lock_init (struct lock *lock) {
 	sema_init (&lock->semaphore, 1);
 }
 
+void
+donate_priority (struct list * locks , struct list_elem * lock_elem, int priority ) {
+	
+}
+
 /* Acquires LOCK, sleeping until it becomes available if
    necessary.  The lock must not already be held by the current
    thread.
