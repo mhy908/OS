@@ -1,26 +1,10 @@
 FAIL
-Test output failed to match any acceptable form.
-
-Acceptable output:
-  (priority-donate-one) begin
-  (priority-donate-one) This thread should have priority 32.  Actual priority: 32.
-  (priority-donate-one) This thread should have priority 33.  Actual priority: 33.
-  (priority-donate-one) acquire2: got the lock
-  (priority-donate-one) acquire2: done
-  (priority-donate-one) acquire1: got the lock
-  (priority-donate-one) acquire1: done
-  (priority-donate-one) acquire2, acquire1 must already have finished, in that order.
-  (priority-donate-one) This should be the last line before finishing this test.
-  (priority-donate-one) end
-Differences in `diff -u' format:
-  (priority-donate-one) begin
-  (priority-donate-one) This thread should have priority 32.  Actual priority: 32.
-  (priority-donate-one) This thread should have priority 33.  Actual priority: 33.
-+ (priority-donate-one) acquire1: got the lock
-  (priority-donate-one) acquire2: got the lock
-  (priority-donate-one) acquire2: done
-- (priority-donate-one) acquire1: got the lock
-  (priority-donate-one) acquire1: done
-  (priority-donate-one) acquire2, acquire1 must already have finished, in that order.
-  (priority-donate-one) This should be the last line before finishing this test.
-  (priority-donate-one) end
+Kernel panic in run: PANIC at ../../threads/thread.c:266 in thread_unblock(): assertion `t->status == THREAD_BLOCKED' failed.
+Call stack: 0x8004213824 0x8004206e3d 0x8004209a71 0x800420a2b7 0x8004217e9e 0x800420724c
+Translation of call stack:
+0x0000008004213824: debug_panic (lib/kernel/debug.c:32)
+0x0000008004206e3d: thread_unblock (threads/thread.c:267)
+0x0000008004209a71: sema_up (threads/synch.c:120)
+0x000000800420a2b7: lock_release (threads/synch.c:308)
+0x0000008004217e9e: acquire2_thread_func (tests/threads/priority-donate-one.c:64)
+0x000000800420724c: kernel_thread (threads/thread.c:424)

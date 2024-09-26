@@ -176,6 +176,47 @@ sema_test_helper (void *sema_) {
    acquire and release it.  When these restrictions prove
    onerous, it's a good sign that a semaphore should be used,
    instead of a lock. */
+
+//mhy908
+const bool cmp_lock(const struct list_elem *a, const struct list_elem *b, void *aux UNUSED){
+	struct lock *la=list_entry(a, struct lock, elem);
+	struct lock *lb=list_entry(b, struct lock, elem);
+	int pa=0, pb=0;
+	if(!list_empty(&(la->semaphore.waiters))){
+		struct list_elem *ea=list_max(&(la->semaphore.waiters), cmp_priority, NULL);
+		struct thread *ta=list_entry(ea, struct thread, elem);
+		pa=ta->cur_priority;
+	}
+	if(!list_empty(&(lb->semaphore.waiters))){
+		struct list_elem *eb=list_max(&(lb->semaphore.waiters), cmp_priority, NULL);
+		struct thread *tb=list_entry(eb, struct thread, elem);
+		pb=tb->cur_priority;
+	}
+	return pa<pb;
+}
+
+void update_priority(struct thread *th){
+	th->cur_priority=th->priority;
+	if(!list_empty(&(th->lock_list))){
+		struct list_elem *tmp=list_max(&(th->lock_list), cmp_lock, NULL);
+		struct lock *lb=list_entry(tmp, struct lock, elem);
+		if(!list_empty(&(lb->semaphore.waiters))){
+			struct list_elem *eb=list_max(&(lb->semaphore.waiters), cmp_priority, NULL);
+			struct thread *tb=list_entry(eb, struct thread, elem);
+			if(th->cur_priority<tb->cur_priority)th->cur_priority=tb->cur_priority;
+		}
+	}
+}
+
+void update_priority_climb(struct thread *th){
+	while(1){
+		update_priority(th);
+		if(th->locked_from==NULL)break;
+		th=th->locked_from;
+	}
+}
+
+
 void
 lock_init (struct lock *lock) {
 	ASSERT (lock != NULL);
@@ -186,11 +227,6 @@ lock_init (struct lock *lock) {
 	list_init (&lock->thread_queue);
 
 	sema_init (&lock->semaphore, 1);
-}
-
-void
-donate_priority (struct list * locks , struct list_elem * lock_elem, int priority ) {
-	
 }
 
 /* Acquires LOCK, sleeping until it becomes available if
@@ -212,17 +248,14 @@ lock_acquire (struct lock *lock) {
 	struct thread * holder_thread = lock->holder;
 	
 	if (holder_thread) { // already there is a holder
-		list_push_back (&lock->thread_queue, &curr_thread->lock_list_elem);
+		list_push_back (&lock->thread_queue, &curr_thread->elem);
 		curr_thread -> locked_from = holder_thread;
 
-		//Donate here?
-		if (holder_thread -> cur_priority < curr_thread -> cur_priority) {
-			holder_thread -> cur_priority = curr_thread -> cur_priority;
-		}
+		update_priority_climb (curr_thread);
 
 		sema_down (&lock->semaphore);
 		lock->holder = curr_thread;
-		list_remove (&curr_thread->lock_list_elem);
+		list_remove (&curr_thread->elem);
 		list_push_back (&curr_thread->locks, &lock->elem);
 	} 
 	else {

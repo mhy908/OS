@@ -106,6 +106,7 @@ cmp_prior (const struct list_elem *elem1, const struct list_elem *elem2, void *a
 
    It is not safe to call thread_current() until this function
    finishes. */
+
 void
 thread_init (void) {
 	ASSERT (intr_get_level () == INTR_OFF);
@@ -334,21 +335,13 @@ thread_yield (void) {
 /* Sets the current thread's priority to NEW_PRIORITY. */
 void
 thread_set_priority (int new_priority) {
+	//mhy908
+	struct thread *tcur=thread_current();
+	tcur->priority = tcur->cur_priority = new_priority;
+	
+	update_priority_climb(tcur);
 
-    // wooyechan
-	struct thread * curr_thread = thread_current();
-    struct list_elem * elem;
-    struct thread * max_thread;
-
-	curr_thread->priority = new_priority;
-	curr_thread->cur_priority = new_priority;
-
-    elem = list_max(&ready_list, cmp_prior, NULL);
-    max_thread = list_entry (elem, struct thread, elem);
-    int max_priority = max_thread -> cur_priority;
-    if (max_priority > new_priority) {
-       thread_yield();
-    }
+	thread_yield();
 }
 
 /* Returns the current thread's priority. */
@@ -440,12 +433,12 @@ init_thread (struct thread *t, const char *name, int priority) {
 	ASSERT (PRI_MIN <= priority && priority <= PRI_MAX);
 	ASSERT (name != NULL);
 
+	memset (t, 0, sizeof *t);
+
 	//mhy908
 	t->locked_from=NULL;
 	list_init(&(t->lock_list));
 	t->cur_priority=priority;
-
-	memset (t, 0, sizeof *t);
 	t->status = THREAD_BLOCKED;
 	strlcpy (t->name, name, sizeof t->name);
 	t->tf.rsp = (uint64_t) t + PGSIZE - sizeof (void *);
@@ -454,6 +447,13 @@ init_thread (struct thread *t, const char *name, int priority) {
 	list_init(&(t->locks));
 	t->cur_priority=priority;
 	t->magic = THREAD_MAGIC;
+}
+
+//mhy908
+bool cmp_priority(const struct list_elem *a, const struct list_elem *b, void *aux UNUSED){
+	const struct thread *ta=list_entry(a, struct thread, elem);
+	const struct thread *tb=list_entry(b, struct thread, elem);
+	return ta->cur_priority<tb->cur_priority;
 }
 
 /* Chooses and returns the next thread to be scheduled.  Should

@@ -98,8 +98,7 @@ struct thread {
 
 	int64_t ticks;						/*For alarm clocks*/
 	struct thread* locked_from;			/*Thread that is locked from*/
-	struct list lock_list;				/*List of threads that are locked by this*/
-	struct list_elem lock_list_elem;	/*iterator of lock_list*/
+	struct list lock_list;				/*List of locks that are acquired by this*/
 
 	//wooyechan
 	struct list locks; // locks that thread holds
@@ -146,6 +145,7 @@ const char *thread_name (void);
 void thread_exit (void) NO_RETURN;
 void thread_yield (void);
 
+bool cmp_priority(const struct list_elem *a, const struct list_elem *b, void *);
 int thread_get_priority (void);
 void thread_set_priority (int);
 
