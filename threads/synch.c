@@ -65,8 +65,9 @@ sema_down (struct semaphore *sema) {
 	ASSERT (!intr_context ());
 
 	old_level = intr_disable ();
-	while (sema->value == 0) {
+	while (1) {
 		//wooyechan
+		if (sema->value > 0) break;
 		list_insert_ordered (&sema->waiters, &thread_current ()->elem, cmp_prior, NULL);
 		thread_block ();
 	}

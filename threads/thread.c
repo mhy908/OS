@@ -258,8 +258,7 @@ void
 thread_block (void) {
 	ASSERT (!intr_context ());
 	ASSERT (intr_get_level () == INTR_OFF);
-	thread_current ()->status = THREAD_BLOCKED;
-	schedule ();
+	do_schedule(THREAD_BLOCKED);
 }
 
 /* Transitions a blocked thread T to the ready-to-run state.
