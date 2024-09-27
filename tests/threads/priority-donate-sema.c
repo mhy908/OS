@@ -36,6 +36,7 @@ test_priority_donate_sema (void)
 
   /* Make sure our priority is the default. */
   ASSERT (thread_get_priority () == PRI_DEFAULT);
+  
 
   lock_init (&ls.lock);
   sema_init (&ls.sema, 0);
@@ -50,7 +51,6 @@ static void
 l_thread_func (void *ls_) 
 {
   struct lock_and_sema *ls = ls_;
-
   lock_acquire (&ls->lock);
   msg ("Thread L acquired lock.");
   sema_down (&ls->sema);
@@ -63,7 +63,6 @@ static void
 m_thread_func (void *ls_) 
 {
   struct lock_and_sema *ls = ls_;
-
   sema_down (&ls->sema);
   msg ("Thread M finished.");
 }
@@ -72,7 +71,6 @@ static void
 h_thread_func (void *ls_) 
 {
   struct lock_and_sema *ls = ls_;
-
   lock_acquire (&ls->lock);
   msg ("Thread H acquired lock.");
 

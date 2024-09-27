@@ -67,6 +67,9 @@ static void do_schedule(int status);
 static void schedule (void);
 static tid_t allocate_tid (void);
 
+//wooyechan
+bool cmp_prior (const struct list_elem *elem1, const struct list_elem *elem2, void *aux);
+
 /* Returns true if T appears to point to a valid thread. */
 #define is_thread(t) ((t) != NULL && (t)->magic == THREAD_MAGIC)
 
@@ -82,6 +85,27 @@ static tid_t allocate_tid (void);
 // Because the gdt will be setup after the thread_init, we should
 // setup temporal gdt first.
 static uint64_t gdt[3] = { 0, 0x00af9a000000ffff, 0x00cf92000000ffff };
+
+bool
+cmp_prior (const struct list_elem *elem1, const struct list_elem *elem2, void *aux UNUSED) {
+   const struct thread * thread1 = list_entry (elem1, struct thread, elem);
+   const struct thread * thread2 = list_entry (elem2, struct thread, elem);
+   return thread1 -> cur_priority < thread2 -> cur_priority;
+}
+
+bool
+cmp_prior_lock (const struct list_elem *elem1, const struct list_elem *elem2, void *aux UNUSED) {
+   const struct thread * thread1 = list_entry (elem1, struct thread, lock_elem);
+   const struct thread * thread2 = list_entry (elem2, struct thread, lock_elem);
+   return thread1 -> cur_priority < thread2 -> cur_priority;
+}
+
+bool
+cmp_prior_reverse (const struct list_elem *elem1, const struct list_elem *elem2, void *aux UNUSED) {
+   const struct thread * thread1 = list_entry (elem1, struct thread, elem);
+   const struct thread * thread2 = list_entry (elem2, struct thread, elem);
+   return thread1 -> cur_priority > thread2 -> cur_priority;
+}
 
 /* Initializes the threading system by transforming the code
    that's currently running into a thread.  This can't work in
@@ -215,6 +239,12 @@ thread_create (const char *name, int priority,
 	/* Add to run queue. */
 	thread_unblock (t);
 
+    // wooyechan
+    struct thread * curr_thread = thread_current();
+    if (t->cur_priority > curr_thread->cur_priority) {
+       thread_yield();
+    }
+
 	return tid;
 }
 
@@ -321,7 +351,7 @@ void
 thread_set_priority (int new_priority) {
 	//mhy908
 	struct thread *tcur=thread_current();
-	tcur->priority=tcur->cur_priority=new_priority;
+	tcur->priority = tcur->cur_priority = new_priority;
 	
 	update_priority_climb(tcur);
 
@@ -417,16 +447,17 @@ init_thread (struct thread *t, const char *name, int priority) {
 	ASSERT (PRI_MIN <= priority && priority <= PRI_MAX);
 	ASSERT (name != NULL);
 
+	memset (t, 0, sizeof *t);
+
 	//mhy908
 	t->locked_from=NULL;
 	list_init(&(t->lock_list));
 	t->cur_priority=priority;
-
-	memset (t, 0, sizeof *t);
 	t->status = THREAD_BLOCKED;
 	strlcpy (t->name, name, sizeof t->name);
 	t->tf.rsp = (uint64_t) t + PGSIZE - sizeof (void *);
 	t->priority = priority;
+	t->cur_priority=priority;
 	t->magic = THREAD_MAGIC;
 }
 
@@ -446,8 +477,18 @@ static struct thread *
 next_thread_to_run (void) {
 	if (list_empty (&ready_list))
 		return idle_thread;
-	else
-		return list_entry (list_pop_front (&ready_list), struct thread, elem);
+    else {
+    // wooyechan
+       struct list_elem * elem;      
+       struct thread * next_thread;
+
+       elem = list_max(&ready_list, cmp_prior, NULL);
+       next_thread = list_entry (elem , struct thread, elem);
+
+       list_remove (elem);
+
+       return next_thread;
+    }
 }
 
 /* Use iretq to launch the thread */
