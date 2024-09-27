@@ -115,15 +115,16 @@ sema_up (struct semaphore *sema) {
 
 	old_level = intr_disable ();
 	if (!list_empty (&sema->waiters))
-		thread_unblock (sema_thread = list_entry (list_pop_front (&sema->waiters),
+		thread_unblock (sema_thread = list_entry (list_pop_back (&sema->waiters),
 					struct thread, elem));
 	sema->value++;
-	intr_set_level (old_level);
 
 	if (!intr_context () && sema_thread &&
  			sema_thread->cur_priority > curr_thread->cur_priority)
  		thread_yield();
 	//
+	intr_set_level (old_level);
+
 }
 
 static void sema_test_helper (void *sema_);
@@ -182,14 +183,14 @@ const bool cmp_lock(const struct list_elem *a, const struct list_elem *b, void *
 	struct lock *la=list_entry(a, struct lock, elem);
 	struct lock *lb=list_entry(b, struct lock, elem);
 	int pa=0, pb=0;
-	if(!list_empty(&(la->semaphore.waiters))){
-		struct list_elem *ea=list_max(&(la->semaphore.waiters), cmp_priority, NULL);
-		struct thread *ta=list_entry(ea, struct thread, elem);
+	if(!list_empty(&(la->thread_queue))){
+		struct list_elem *ea=list_max(&(la->thread_queue), cmp_prior_lock, NULL);
+		struct thread *ta=list_entry(ea, struct thread, lock_elem);
 		pa=ta->cur_priority;
 	}
 	if(!list_empty(&(lb->semaphore.waiters))){
-		struct list_elem *eb=list_max(&(lb->semaphore.waiters), cmp_priority, NULL);
-		struct thread *tb=list_entry(eb, struct thread, elem);
+		struct list_elem *eb=list_max(&(lb->thread_queue), cmp_prior_lock, NULL);
+		struct thread *tb=list_entry(eb, struct thread, lock_elem);
 		pb=tb->cur_priority;
 	}
 	return pa<pb;
@@ -200,9 +201,9 @@ void update_priority(struct thread *th){
 	if(!list_empty(&(th->lock_list))){
 		struct list_elem *tmp=list_max(&(th->lock_list), cmp_lock, NULL);
 		struct lock *lb=list_entry(tmp, struct lock, elem);
-		if(!list_empty(&(lb->semaphore.waiters))){
-			struct list_elem *eb=list_max(&(lb->semaphore.waiters), cmp_priority, NULL);
-			struct thread *tb=list_entry(eb, struct thread, elem);
+		if(!list_empty(&(lb->thread_queue))){
+			struct list_elem *eb=list_max(&(lb->thread_queue), cmp_prior_lock, NULL);
+			struct thread *tb=list_entry(eb, struct thread, lock_elem);
 			if(th->cur_priority<tb->cur_priority)th->cur_priority=tb->cur_priority;
 		}
 	}
@@ -215,7 +216,6 @@ void update_priority_climb(struct thread *th){
 		th=th->locked_from;
 	}
 }
-
 
 void
 lock_init (struct lock *lock) {
@@ -248,20 +248,21 @@ lock_acquire (struct lock *lock) {
 	struct thread * holder_thread = lock->holder;
 	
 	if (holder_thread) { // already there is a holder
-		list_push_back (&lock->thread_queue, &curr_thread->elem);
+		list_push_back (&lock->thread_queue, &curr_thread->lock_elem);
 		curr_thread -> locked_from = holder_thread;
 
 		update_priority_climb (curr_thread);
 
 		sema_down (&lock->semaphore);
 		lock->holder = curr_thread;
-		list_remove (&curr_thread->elem);
-		list_push_back (&curr_thread->locks, &lock->elem);
+		curr_thread -> locked_from = NULL;
+		list_remove (&curr_thread->lock_elem);
+		list_push_back (&curr_thread->lock_list, &lock->elem);
 	} 
 	else {
 		sema_down (&lock->semaphore);
 		lock->holder = curr_thread;
-		list_push_back (&curr_thread->locks, &lock->elem);
+		list_push_back (&curr_thread->lock_list, &lock->elem);
 	}
 }
 
@@ -298,8 +299,9 @@ lock_release (struct lock *lock) {
 	//wooyechan
 	struct thread * curr_thread = lock -> holder;
 	if (curr_thread) {
-		curr_thread -> cur_priority = curr_thread -> priority;
+		//todo
 		list_remove (&lock->elem); 
+		update_priority_climb (curr_thread);
 	}
 	
 	lock->holder = NULL;

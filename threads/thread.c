@@ -93,6 +93,20 @@ cmp_prior (const struct list_elem *elem1, const struct list_elem *elem2, void *a
    return thread1 -> cur_priority < thread2 -> cur_priority;
 }
 
+bool
+cmp_prior_lock (const struct list_elem *elem1, const struct list_elem *elem2, void *aux UNUSED) {
+   const struct thread * thread1 = list_entry (elem1, struct thread, lock_elem);
+   const struct thread * thread2 = list_entry (elem2, struct thread, lock_elem);
+   return thread1 -> cur_priority < thread2 -> cur_priority;
+}
+
+bool
+cmp_prior_reverse (const struct list_elem *elem1, const struct list_elem *elem2, void *aux UNUSED) {
+   const struct thread * thread1 = list_entry (elem1, struct thread, elem);
+   const struct thread * thread2 = list_entry (elem2, struct thread, elem);
+   return thread1 -> cur_priority > thread2 -> cur_priority;
+}
+
 /* Initializes the threading system by transforming the code
    that's currently running into a thread.  This can't work in
    general and it is possible in this case only because loader.S
@@ -443,8 +457,6 @@ init_thread (struct thread *t, const char *name, int priority) {
 	strlcpy (t->name, name, sizeof t->name);
 	t->tf.rsp = (uint64_t) t + PGSIZE - sizeof (void *);
 	t->priority = priority;
-	//wooyechan
-	list_init(&(t->locks));
 	t->cur_priority=priority;
 	t->magic = THREAD_MAGIC;
 }
