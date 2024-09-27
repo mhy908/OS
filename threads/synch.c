@@ -110,17 +110,18 @@ sema_up (struct semaphore *sema) {
 	//
 	struct thread * sema_thread = NULL;
 	struct thread * curr_thread = thread_current ();
+	struct list_elem * sema_elem;
 
 	ASSERT (sema != NULL);
 
 	old_level = intr_disable ();
-	if (!list_empty (&sema->waiters))
-		thread_unblock (sema_thread = list_entry (list_pop_back (&sema->waiters),
-					struct thread, elem));
+	if (!list_empty (&sema->waiters)) {
+		sema_elem = list_pop_back (&sema->waiters);
+		thread_unblock (sema_thread = list_entry (sema_elem, struct thread, elem));
+	}
 	sema->value++;
 
-	if (!intr_context () && sema_thread &&
- 			sema_thread->cur_priority > curr_thread->cur_priority)
+	if (!intr_context () && sema_thread && sema_thread -> cur_priority > curr_thread -> cur_priority)
  		thread_yield();
 	//
 	intr_set_level (old_level);
@@ -188,7 +189,7 @@ const bool cmp_lock(const struct list_elem *a, const struct list_elem *b, void *
 		struct thread *ta=list_entry(ea, struct thread, lock_elem);
 		pa=ta->cur_priority;
 	}
-	if(!list_empty(&(lb->semaphore.waiters))){
+	if(!list_empty(&(lb->thread_queue))){
 		struct list_elem *eb=list_max(&(lb->thread_queue), cmp_prior_lock, NULL);
 		struct thread *tb=list_entry(eb, struct thread, lock_elem);
 		pb=tb->cur_priority;
@@ -204,7 +205,9 @@ void update_priority(struct thread *th){
 		if(!list_empty(&(lb->thread_queue))){
 			struct list_elem *eb=list_max(&(lb->thread_queue), cmp_prior_lock, NULL);
 			struct thread *tb=list_entry(eb, struct thread, lock_elem);
-			if(th->cur_priority<tb->cur_priority)th->cur_priority=tb->cur_priority;
+			if(th->cur_priority<tb->cur_priority) {
+				th->cur_priority=tb->cur_priority;
+			}
 		}
 	}
 }
@@ -227,6 +230,23 @@ lock_init (struct lock *lock) {
 	list_init (&lock->thread_queue);
 
 	sema_init (&lock->semaphore, 1);
+}
+
+//wooyechan
+void
+update_holder (struct list *thread_queue, struct thread *curr_thread, struct thread * holder_thread)
+{
+    ASSERT (thread_queue != NULL);
+    ASSERT (curr_thread != NULL);
+
+    struct list_elem *e = list_begin(thread_queue);
+
+    while (e != list_end(thread_queue)) {
+        struct thread *waiting_thread = list_entry(e, struct thread, lock_elem);
+		if (waiting_thread->locked_from == holder_thread)
+       		waiting_thread->locked_from = curr_thread;
+        e = list_next(e);
+    }
 }
 
 /* Acquires LOCK, sleeping until it becomes available if
@@ -257,6 +277,7 @@ lock_acquire (struct lock *lock) {
 		lock->holder = curr_thread;
 		curr_thread -> locked_from = NULL;
 		list_remove (&curr_thread->lock_elem);
+		//update_holder (&lock->thread_queue , curr_thread, holder_thread);
 		list_push_back (&curr_thread->lock_list, &lock->elem);
 	} 
 	else {
@@ -301,6 +322,7 @@ lock_release (struct lock *lock) {
 	if (curr_thread) {
 		//todo
 		list_remove (&lock->elem); 
+		
 		update_priority_climb (curr_thread);
 	}
 	
