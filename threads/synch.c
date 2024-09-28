@@ -182,7 +182,7 @@ sema_test_helper (void *sema_) {
    instead of a lock. */
 
 //mhy908
-const bool cmp_lock(const struct list_elem *a, const struct list_elem *b, void *aux UNUSED){
+bool cmp_lock(const struct list_elem *a, const struct list_elem *b, void *aux UNUSED){
 	struct lock *la=list_entry(a, struct lock, elem);
 	struct lock *lb=list_entry(b, struct lock, elem);
 	int pa=0, pb=0;
@@ -234,23 +234,6 @@ lock_init (struct lock *lock) {
 	sema_init (&lock->semaphore, 1);
 }
 
-//wooyechan
-void
-update_holder (struct list *thread_queue, struct thread *curr_thread, struct thread * holder_thread)
-{
-    ASSERT (thread_queue != NULL);
-    ASSERT (curr_thread != NULL);
-
-    struct list_elem *e = list_begin(thread_queue);
-
-    while (e != list_end(thread_queue)) {
-        struct thread *waiting_thread = list_entry(e, struct thread, lock_elem);
-		if (waiting_thread->locked_from == holder_thread)
-       		waiting_thread->locked_from = curr_thread;
-        e = list_next(e);
-    }
-}
-
 /* Acquires LOCK, sleeping until it becomes available if
    necessary.  The lock must not already be held by the current
    thread.
@@ -269,7 +252,7 @@ lock_acquire (struct lock *lock) {
 	struct thread * curr_thread = thread_current ();
 	struct thread * holder_thread = lock->holder;
 	
-	if (holder_thread) { // already there is a holder
+	if (holder_thread && !thread_mlfqs) { // already there is a holder
 		list_push_back (&lock->thread_queue, &curr_thread->lock_elem);
 		curr_thread -> locked_from = holder_thread;
 
@@ -279,13 +262,12 @@ lock_acquire (struct lock *lock) {
 		lock->holder = curr_thread;
 		curr_thread -> locked_from = NULL;
 		list_remove (&curr_thread->lock_elem);
-		//update_holder (&lock->thread_queue , curr_thread, holder_thread);
 		list_push_back (&curr_thread->lock_list, &lock->elem);
 	} 
 	else {
 		sema_down (&lock->semaphore);
 		lock->holder = curr_thread;
-		list_push_back (&curr_thread->lock_list, &lock->elem);
+		if (!thread_mlfqs) list_push_back (&curr_thread->lock_list, &lock->elem);
 	}
 }
 
@@ -321,15 +303,12 @@ lock_release (struct lock *lock) {
 
 	//wooyechan
 	struct thread * curr_thread = lock -> holder;
-	if (curr_thread) {
-		//todo
+	if (curr_thread && !thread_mlfqs) {
 		list_remove (&lock->elem); 
-		
 		update_priority_climb (curr_thread);
 	}
 	
 	lock->holder = NULL;
-
 	sema_up (&lock->semaphore);
 }
 
@@ -403,7 +382,7 @@ cond_wait (struct condition *cond, struct lock *lock) {
    make sense to try to signal a condition variable within an
    interrupt handler. */
 
-bool cmp_prior_cond(struct list_elem *a, struct list_elem *b, void *aux UNUSED){
+bool cmp_prior_cond(const struct list_elem *a, const struct list_elem *b, void *aux UNUSED){
 	struct semaphore *as=&list_entry(a, struct semaphore_elem, elem)->semaphore;
 	struct semaphore *bs=&list_entry(b, struct semaphore_elem, elem)->semaphore;
 	struct thread *ta=list_entry(list_max(&as->waiters, cmp_prior, NULL), struct thread, elem);

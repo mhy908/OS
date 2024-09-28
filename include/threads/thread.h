@@ -96,6 +96,10 @@ struct thread {
 	int cur_priority;					/*For priority_scheduling : modified priority*/
 	//Solve by TreeDP, cur_priority=max(priority, cur_priority of threads in lock_list)
 
+	//wooyechan
+	int nice;
+	int recent_cpu;
+
 	int64_t ticks;						/*For alarm clocks*/
 	struct thread* locked_from;			/*Thread that is locked from*/
 	struct list lock_list;				/*List of locks that are acquired by this*/
@@ -152,9 +156,15 @@ void thread_set_nice (int);
 int thread_get_recent_cpu (void);
 int thread_get_load_avg (void);
 
+//wooyechan
 bool cmp_prior (const struct list_elem *elem1, const struct list_elem *elem2, void *aux);
 bool cmp_prior_reverse (const struct list_elem *elem1, const struct list_elem *elem2, void *aux);
 bool cmp_prior_lock (const struct list_elem *elem1, const struct list_elem *elem2, void *aux);
+
+int recent_cpu_mlfq (struct thread *t);
+int priority_mlfq (struct thread *t);
+void update_recent_cpu (void);
+void update_priority_mlfq (void);
 
 void do_iret (struct intr_frame *tf);
 

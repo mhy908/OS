@@ -10,6 +10,7 @@
 #include "threads/palloc.h"
 #include "threads/synch.h"
 #include "threads/vaddr.h"
+#include "include/devices/timer.h"
 #include "intrinsic.h"
 #ifdef USERPROG
 #include "userprog/process.h"
@@ -31,6 +32,9 @@ static struct list ready_list;
 //mhy908
 // No static keyword, so that it is shared.
 struct list sleep_list;
+
+//wooyechan
+int load_avg;
 
 /* Idle thread. */
 static struct thread *idle_thread;
@@ -69,6 +73,16 @@ static tid_t allocate_tid (void);
 
 //wooyechan
 bool cmp_prior (const struct list_elem *elem1, const struct list_elem *elem2, void *aux);
+int i2fp (int n);
+int fp2i (int fp);
+int fp2i_rounding (int fp);
+int mul_fp (int fp1, int fp2);
+int div_fp (int fp1, int fp2);
+
+int recent_cpu_mlfq (struct thread *t);
+int priority_mlfq (struct thread *t);
+void update_recent_cpu (void);
+void update_priority_mlfq (void);
 
 /* Returns true if T appears to point to a valid thread. */
 #define is_thread(t) ((t) != NULL && (t)->magic == THREAD_MAGIC)
@@ -86,6 +100,28 @@ bool cmp_prior (const struct list_elem *elem1, const struct list_elem *elem2, vo
 // setup temporal gdt first.
 static uint64_t gdt[3] = { 0, 0x00af9a000000ffff, 0x00cf92000000ffff };
 
+//wooyechan
+int
+i2fp (int n) { return n << 14; }
+
+int
+fp2i (int fp) {	return fp >> 14; }
+
+int
+fp2i_rounding (int fp) {
+	if (fp >= 0) 
+		return (fp + (1 << 13)) / (1 << 14);
+	else
+		return (fp - (1 << 13)) / (1 << 14);
+}
+
+int
+mul_fp (int fp1, int fp2) {	return (((int64_t) fp1) * fp2) / (1 << 14); }
+
+int
+div_fp (int fp1, int fp2) {	return (((int64_t) fp1) * (1 << 14)) / fp2; }
+
+//wooyechan
 bool
 cmp_prior (const struct list_elem *elem1, const struct list_elem *elem2, void *aux UNUSED) {
    const struct thread * thread1 = list_entry (elem1, struct thread, elem);
@@ -142,6 +178,9 @@ thread_init (void) {
 	//mhy908
 	list_init (&sleep_list);
 
+	//wooyechan
+	load_avg = 0;
+
 	/* Set up a thread structure for the running thread. */
 	initial_thread = running_thread ();
 	init_thread (initial_thread, "main", PRI_DEFAULT);
@@ -165,6 +204,62 @@ thread_start (void) {
 	sema_down (&idle_started);
 }
 
+int
+recent_cpu_mlfq (struct thread *t) {
+	int co = div_fp (load_avg * 2, (load_avg * 2) + i2fp(1));
+	return mul_fp (co, t->recent_cpu) + i2fp (t->nice);
+}
+
+int
+priority_mlfq (struct thread *t) {
+	int new_priority = 63 - fp2i(t->recent_cpu / 4) - 2 * t->nice;
+	if (new_priority > 63) return 63;
+	if (new_priority < 0) return 0;
+	return new_priority;
+}
+
+void
+update_recent_cpu () {
+	struct list_elem * elem = list_begin (&ready_list);
+	struct list_elem * ready_end = list_end (&ready_list);
+	struct list_elem * sleep_end = list_end (&sleep_list);
+	struct thread * curr_thread = thread_current();
+
+	if (curr_thread != idle_thread) {
+		 curr_thread->recent_cpu = recent_cpu_mlfq (curr_thread);
+	}
+	while (1)
+	{
+		if (elem == ready_end) elem = list_begin (&sleep_list);
+		if (elem == sleep_end) break;
+		struct thread * thread = list_entry (elem, struct thread, elem);
+		thread -> recent_cpu = recent_cpu_mlfq (thread);
+		elem = elem->next;
+	}
+}
+
+void
+update_priority_mlfq () {
+	struct list_elem * elem = list_begin (&ready_list);
+	struct list_elem * ready_end = list_end (&ready_list);
+	struct list_elem * sleep_end = list_end (&sleep_list);
+	struct thread * curr_thread = thread_current();
+
+	if (curr_thread != idle_thread) {
+		curr_thread->priority = priority_mlfq(curr_thread);
+		curr_thread->cur_priority = curr_thread->priority;
+	}
+	while (1)
+	{
+		if (elem == ready_end) elem = list_begin (&sleep_list);
+		if (elem == sleep_end) break;
+		struct thread * thread = list_entry (elem, struct thread, elem);
+		thread->priority = priority_mlfq(thread);
+		thread->cur_priority = thread->priority;
+		elem = elem->next;
+	}
+}
+
 /* Called by the timer interrupt handler at each timer tick.
    Thus, this function runs in an external interrupt context. */
 void
@@ -184,6 +279,24 @@ thread_tick (void) {
 	/* Enforce preemption. */
 	if (++thread_ticks >= TIME_SLICE)
 		intr_yield_on_return ();
+	
+	//wooyechan
+	int64_t ticks = timer_ticks ();
+	if (thread_mlfqs) {
+		int len_ready_list = list_size (&ready_list);
+		if (t != idle_thread) {
+			len_ready_list ++;
+			t->recent_cpu += i2fp (1); 
+		}
+		if (!(ticks % 100)) {
+			int co = i2fp(59) / 60;
+			load_avg = mul_fp (co, load_avg) + (i2fp (len_ready_list) / 60);
+			update_recent_cpu ();
+		}
+		if (!(ticks % 4)) {
+			update_priority_mlfq ();
+		}
+	}
 }
 
 /* Prints thread statistics. */
@@ -216,6 +329,9 @@ thread_create (const char *name, int priority,
 
 	ASSERT (function != NULL);
 
+	//wooyechan
+    struct thread * curr_thread = thread_current();
+
 	/* Allocate thread. */
 	t = palloc_get_page (PAL_ZERO);
 	if (t == NULL)
@@ -236,11 +352,19 @@ thread_create (const char *name, int priority,
 	t->tf.cs = SEL_KCSEG;
 	t->tf.eflags = FLAG_IF;
 
+	//wooyechan
+	if (thread_mlfqs) {
+		t->recent_cpu = curr_thread->recent_cpu;
+		t->nice = curr_thread->nice;
+		t->priority = priority_mlfq(t);
+		t->cur_priority = t->priority;
+		//t->cur_priority = t->priority = priority_mlfq(t);
+	}
+
 	/* Add to run queue. */
 	thread_unblock (t);
 
     // wooyechan
-    struct thread * curr_thread = thread_current();
     if (t->cur_priority > curr_thread->cur_priority) {
        thread_yield();
     }
@@ -365,29 +489,34 @@ thread_get_priority (void) {
 
 /* Sets the current thread's nice value to NICE. */
 void
-thread_set_nice (int nice UNUSED) {
+thread_set_nice (int nice) {
 	/* TODO: Your implementation goes here */
+	struct thread * curr_thread = thread_current();
+	curr_thread -> nice = nice;
+	curr_thread -> priority = priority_mlfq(curr_thread);
+	curr_thread -> cur_priority = curr_thread -> priority;
+	//curr_thread -> cur_priority = curr_thread -> priority = priority_mlfq(curr_thread);
 }
 
 /* Returns the current thread's nice value. */
 int
 thread_get_nice (void) {
 	/* TODO: Your implementation goes here */
-	return 0;
+	return thread_current() -> nice;
 }
 
 /* Returns 100 times the system load average. */
 int
 thread_get_load_avg (void) {
 	/* TODO: Your implementation goes here */
-	return 0;
+	return fp2i_rounding (load_avg * 100);
 }
 
 /* Returns 100 times the current thread's recent_cpu value. */
 int
 thread_get_recent_cpu (void) {
 	/* TODO: Your implementation goes here */
-	return 0;
+	return fp2i_rounding (thread_current() -> recent_cpu * 100);
 }
 
 /* Idle thread.  Executes when no other thread is ready to run.
@@ -453,6 +582,8 @@ init_thread (struct thread *t, const char *name, int priority) {
 	list_init(&(t->lock_list));
 	t->cur_priority=priority;
 	t->status = THREAD_BLOCKED;
+	t->recent_cpu = 0;
+	t->nice = 0;
 	strlcpy (t->name, name, sizeof t->name);
 	t->tf.rsp = (uint64_t) t + PGSIZE - sizeof (void *);
 	t->priority = priority;
