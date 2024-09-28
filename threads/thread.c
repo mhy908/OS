@@ -591,13 +591,6 @@ init_thread (struct thread *t, const char *name, int priority) {
 	t->magic = THREAD_MAGIC;
 }
 
-//mhy908
-bool cmp_priority(const struct list_elem *a, const struct list_elem *b, void *aux UNUSED){
-	const struct thread *ta=list_entry(a, struct thread, elem);
-	const struct thread *tb=list_entry(b, struct thread, elem);
-	return ta->cur_priority<tb->cur_priority;
-}
-
 /* Chooses and returns the next thread to be scheduled.  Should
    return a thread from the run queue, unless the run queue is
    empty.  (If the running thread can continue running, then it
