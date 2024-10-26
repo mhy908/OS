@@ -163,7 +163,26 @@ error:
 int
 process_exec (void *f_name) {
 	char *file_name = f_name;
+	//wooyechan
+	char *argv[64];
+	char *save_ptr;
+	int argc = 0;
 	bool success;
+
+	//wooyechan
+	//save tokens in argument list
+    for (char *token = strtok_r(f_name, " ", &save_ptr); token != NULL; token = strtok_r(NULL, " ", &save_ptr)) {
+        argv[argc] = token;
+        argc++;
+    }
+    argv[argc] = NULL;
+
+	/*
+	printf("Arguments parsed, argc = %d\n", argc);
+    for (int i = 0; i < argc; i++) {
+        printf("argv[%d] = %s\n", i, argv[i]);
+    }
+	*/
 
 	/* We cannot use the intr_frame in the thread structure.
 	 * This is because when current thread rescheduled,
@@ -177,15 +196,54 @@ process_exec (void *f_name) {
 	process_cleanup ();
 
 	/* And then load the binary */
-	success = load (file_name, &_if);
+	//wooyechan
+	//filename to argv[0]
+	success = load (argv[0], &_if);
 
 	/* If load failed, quit. */
-	palloc_free_page (file_name);
-	if (!success)
+	if (!success) {
+		// for safety?
+		palloc_free_page (argv[0]);
 		return -1;
+	}
+	
+	//wooyechan
+	uintptr_t arg_addr[64]; 
+    for (int i = argc - 1; i >= 0; i--) {
+        int arg_len = strlen(argv[i]) + 1;
+        _if.rsp -= arg_len;
+        memcpy(_if.rsp, argv[i], arg_len);
+        arg_addr[i] = _if.rsp;
+    }
 
+    // Word-align
+    _if.rsp -= ((uintptr_t)_if.rsp % 8);
+
+    // null pointer argv[argc]
+    _if.rsp -= 8;
+    memset(_if.rsp, 0, 8);
+
+    // argv addresses
+    for (int i = argc - 1; i >= 0; i--) {
+        _if.rsp -= 8;
+        memcpy(_if.rsp, &arg_addr[i], 8);
+    }
+
+    // return address
+    _if.rsp -= 8;
+    memset(_if.rsp, 0, 8);
+
+    _if.R.rdi = argc;
+    _if.R.rsi = _if.rsp + 8; 
+
+	// for debug
+	hex_dump(_if.rsp, _if.rsp, USER_STACK - (uint64_t)*(&_if.rsp), true);
+    printf("Registers setup: RDI = %d, RSI = %p\n", _if.R.rdi, (void *)_if.R.rsi);
 	/* Start switched process. */
 	do_iret (&_if);
+	
+	palloc_free_page (argv[0]);
+
 	NOT_REACHED ();
 }
 
@@ -204,6 +262,8 @@ process_wait (tid_t child_tid UNUSED) {
 	/* XXX: Hint) The pintos exit if process_wait (initd), we recommend you
 	 * XXX:       to add infinite loop here before
 	 * XXX:       implementing the process_wait. */
+	// wooyechan
+	for (int i = 0; i < 1000000000; i ++) {}
 	return -1;
 }
 
