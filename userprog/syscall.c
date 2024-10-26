@@ -24,6 +24,47 @@ void syscall_handler (struct intr_frame *);
 #define MSR_LSTAR 0xc0000082        /* Long mode SYSCALL target */
 #define MSR_SYSCALL_MASK 0xc0000084 /* Mask for the eflags */
 
+// wooyechan start
+void halt() {
+	power_off();
+}
+
+void exit(int status) {
+	struct thread * curr = thread_current();
+	curr -> exit = status;
+	printf ("%s: exit(%d)\n", curr -> name, status);
+	thread_exit();
+}
+
+int fork (const char *thread_name) {}
+
+int exec (const char *file) {
+
+}
+
+int wait (int pid) {}
+
+bool create (const char *file, unsigned initial_size) {
+	/* MUST CHECK validity of file */
+	return filesys_create(file, initial_size);
+}
+
+bool remove (const char *file) {
+	return filesys_remove(file);
+}
+int open (const char *file) {}
+int filesize (int fd) {}
+int read (int fd, void *buffer, unsigned length) {}
+
+int write (int fd, const void *buffer, unsigned length) {
+
+}
+
+void seek (int fd, unsigned position) {}
+unsigned tell (int fd) {}
+void close (int fd) {}
+// wooyechan end
+
 void
 syscall_init (void) {
 	write_msr(MSR_STAR, ((uint64_t)SEL_UCSEG - 0x10) << 48  |
@@ -39,8 +80,48 @@ syscall_init (void) {
 
 /* The main system call interface */
 void
-syscall_handler (struct intr_frame *f UNUSED) {
+syscall_handler (struct intr_frame *f) {
 	// TODO: Your implementation goes here.
-	printf ("system call!\n");
-	thread_exit ();
+	// wooyechan start
+	/* 
+	Thus, when the system call handler syscall_handler() gets control,
+	the system call number is in the rax, and arguments are passed with 
+	the order %rdi, %rsi, %rdx, %r10, %r8, and %r9. 
+	*/
+	uint64_t syscall_number = f->R.rax;
+	uint64_t first_arg = f->R.rdi;
+	int pid;
+	printf ("syscall_number : %d\n", syscall_number);
+	switch (syscall_number)
+	{
+	case SYS_HALT:
+		halt();
+	case SYS_EXIT:
+		exit(first_arg);
+	case SYS_FORK:
+		fork(first_arg);		
+	case SYS_EXEC:
+		exec(first_arg);
+	case SYS_WAIT:
+		wait(first_arg);
+	case SYS_CREATE:
+		create(first_arg, f->R.rsi);		
+	case SYS_REMOVE:
+		remove(first_arg);		
+	case SYS_OPEN:
+		open(first_arg);		
+	case SYS_FILESIZE:
+		filesize(first_arg);
+	case SYS_READ:
+		read(first_arg, f->R.rsi, f->R.rdx);
+	case SYS_WRITE:
+		write(first_arg, f->R.rsi, f->R.rdx);		
+	case SYS_SEEK:
+		seek(first_arg, f->R.rsi);		
+	case SYS_TELL:
+		tell(first_arg);		
+	case SYS_CLOSE:
+		close(first_arg);
+	}
+	// wooyechan end
 }
