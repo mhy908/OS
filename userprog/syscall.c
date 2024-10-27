@@ -8,6 +8,9 @@
 #include "threads/flags.h"
 #include "intrinsic.h"
 
+#include <string.h>
+#include <stdlib.h>
+
 void syscall_entry (void);
 void syscall_handler (struct intr_frame *);
 
@@ -25,6 +28,12 @@ void syscall_handler (struct intr_frame *);
 #define MSR_SYSCALL_MASK 0xc0000084 /* Mask for the eflags */
 
 // wooyechan start
+char * get_first_word (char * name) {
+	char * token, save;
+	token = strtok_r(name, " ", &save);
+	return token;
+}
+
 void halt() {
 	power_off();
 }
@@ -32,7 +41,8 @@ void halt() {
 void exit(int status) {
 	struct thread * curr = thread_current();
 	curr -> exit = status;
-	printf ("%s: exit(%d)\n", curr -> name, status);
+	char * name = get_first_word (curr -> name);
+    printf("%s: exit(%d)\n", name, status);
 	thread_exit();
 }
 
@@ -42,22 +52,37 @@ int exec (const char *file) {
 
 }
 
-int wait (int pid) {}
+int wait (int pid) {
+	return 0;
+}
 
 bool create (const char *file, unsigned initial_size) {
 	/* MUST CHECK validity of file */
-	return filesys_create(file, initial_size);
+	char * name = get_first_word (file);
+	return filesys_create(name, initial_size);
 }
 
 bool remove (const char *file) {
-	return filesys_remove(file);
+	char * name = get_first_word (file);
+	return filesys_remove(name);
 }
-int open (const char *file) {}
-int filesize (int fd) {}
+
+int open (const char *file) {
+	printf ("OPEN : %s", file);
+	return 0;
+}
+
+int filesize (int fd) {
+	// TODO : where is the file?
+	return 0;
+}
+
 int read (int fd, void *buffer, unsigned length) {}
 
 int write (int fd, const void *buffer, unsigned length) {
-
+	if (fd == STDOUT_FILENO)
+		putbuf(buffer, length);
+	return length;
 }
 
 void seek (int fd, unsigned position) {}
@@ -87,11 +112,15 @@ syscall_handler (struct intr_frame *f) {
 	Thus, when the system call handler syscall_handler() gets control,
 	the system call number is in the rax, and arguments are passed with 
 	the order %rdi, %rsi, %rdx, %r10, %r8, and %r9. 
+
+	The x86-64 convention for function return values is to place them in
+	the RAX register. System calls that return a value can do so by modifying
+	the rax member of struct intr_frame
 	*/
 	uint64_t syscall_number = f->R.rax;
 	uint64_t first_arg = f->R.rdi;
 	int pid;
-	printf ("syscall_number : %d\n", syscall_number);
+	//printf ("syscall_number : %d\n", syscall_number);
 	switch (syscall_number)
 	{
 	case SYS_HALT:
@@ -103,19 +132,19 @@ syscall_handler (struct intr_frame *f) {
 	case SYS_EXEC:
 		exec(first_arg);
 	case SYS_WAIT:
-		wait(first_arg);
+		f->R.rax = wait(first_arg);
 	case SYS_CREATE:
-		create(first_arg, f->R.rsi);		
+		f->R.rax = create(first_arg, f->R.rsi);		
 	case SYS_REMOVE:
-		remove(first_arg);		
+		f->R.rax = remove(first_arg);		
 	case SYS_OPEN:
-		open(first_arg);		
+		f->R.rax = open(first_arg);		
 	case SYS_FILESIZE:
-		filesize(first_arg);
+		f->R.rax = filesize(first_arg);
 	case SYS_READ:
 		read(first_arg, f->R.rsi, f->R.rdx);
 	case SYS_WRITE:
-		write(first_arg, f->R.rsi, f->R.rdx);		
+		f->R.rax = write(first_arg, f->R.rsi, f->R.rdx);		
 	case SYS_SEEK:
 		seek(first_arg, f->R.rsi);		
 	case SYS_TELL:
