@@ -1,12 +1,21 @@
 #include "userprog/syscall.h"
+#include "userprog/process.h"
 #include <stdio.h>
 #include <syscall-nr.h>
 #include "threads/interrupt.h"
 #include "threads/thread.h"
 #include "threads/loader.h"
+#include "threads/synch.h"
+#include "threads/palloc.h"
+#include "threads/malloc.h"
+#include "threads/init.h"
+#include "threads/mmu.h"
+#include "filesys/file.h"
+#include "filesys/filesys.h"
 #include "userprog/gdt.h"
 #include "threads/flags.h"
 #include "intrinsic.h"
+#include "lib/string.h"
 
 void syscall_entry (void);
 void syscall_handler (struct intr_frame *);
@@ -24,6 +33,9 @@ void syscall_handler (struct intr_frame *);
 #define MSR_LSTAR 0xc0000082        /* Long mode SYSCALL target */
 #define MSR_SYSCALL_MASK 0xc0000084 /* Mask for the eflags */
 
+//mhy908 - lock for filesystem
+struct lock file_lock;
+
 // wooyechan start
 void halt() {
 	power_off();
@@ -36,7 +48,9 @@ void exit(int status) {
 	thread_exit();
 }
 
-int fork (const char *thread_name) {}
+pid_t fork (const char *thread_name); {
+	
+}
 
 int exec (const char *file) {
 
@@ -46,11 +60,20 @@ int wait (int pid) {}
 
 bool create (const char *file, unsigned initial_size) {
 	/* MUST CHECK validity of file */
-	return filesys_create(file, initial_size);
+	
+	lock_acquire(&file_lock);
+	bool ret=filesys_create(file, initial_size);
+	lock_release(&file_lock);
+	return ret;
 }
 
 bool remove (const char *file) {
-	return filesys_remove(file);
+	/* MUST CHECK validity of file */
+
+	lock_acquire(&file_lock);
+	bool ret=filesys_remove(file);
+	lock_release(&file_lock);
+	return ret;
 }
 int open (const char *file) {}
 int filesize (int fd) {}
@@ -76,6 +99,9 @@ syscall_init (void) {
 	 * mode stack. Therefore, we masked the FLAG_FL. */
 	write_msr(MSR_SYSCALL_MASK,
 			FLAG_IF | FLAG_TF | FLAG_DF | FLAG_IOPL | FLAG_AC | FLAG_NT);
+
+	//mhy908
+	lock_init(&file_lock);
 }
 
 /* The main system call interface */
