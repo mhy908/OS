@@ -1,12 +1,21 @@
 #include "userprog/syscall.h"
+#include "userprog/process.h"
 #include <stdio.h>
 #include <syscall-nr.h>
 #include "threads/interrupt.h"
 #include "threads/thread.h"
 #include "threads/loader.h"
+#include "threads/synch.h"
+#include "threads/palloc.h"
+#include "threads/malloc.h"
+#include "threads/init.h"
+#include "threads/mmu.h"
+#include "filesys/file.h"
+#include "filesys/filesys.h"
 #include "userprog/gdt.h"
 #include "threads/flags.h"
 #include "intrinsic.h"
+#include "lib/string.h"
 
 #include <string.h>
 #include <stdlib.h>
@@ -27,6 +36,9 @@ void syscall_handler (struct intr_frame *);
 #define MSR_LSTAR 0xc0000082        /* Long mode SYSCALL target */
 #define MSR_SYSCALL_MASK 0xc0000084 /* Mask for the eflags */
 
+//mhy908 - lock for filesystem
+struct lock file_lock;
+
 // wooyechan start
 char * get_first_word (char * name) {
 	char * token, save;
@@ -46,7 +58,9 @@ void exit(int status) {
 	thread_exit();
 }
 
-int fork (const char *thread_name) {}
+int fork (const char *thread_name) {
+	
+}
 
 int exec (const char *file) {
 
@@ -58,18 +72,23 @@ int wait (int pid) {
 
 bool create (const char *file, unsigned initial_size) {
 	/* MUST CHECK validity of file */
-	char * name = get_first_word (file);
-	return filesys_create(name, initial_size);
+	
+	lock_acquire(&file_lock);
+	bool ret=filesys_create(file, initial_size);
+	lock_release(&file_lock);
+	return ret;
 }
 
 bool remove (const char *file) {
-	char * name = get_first_word (file);
-	return filesys_remove(name);
+	/* MUST CHECK validity of file */
+	lock_acquire(&file_lock);
+	bool ret=filesys_remove(file);
+	lock_release(&file_lock);
+	return ret;
 }
 
-int open (const char *file) {
-	printf ("OPEN : %s", file);
-	return 0;
+int open (int fd) {
+
 }
 
 int filesize (int fd) {
@@ -101,6 +120,9 @@ syscall_init (void) {
 	 * mode stack. Therefore, we masked the FLAG_FL. */
 	write_msr(MSR_SYSCALL_MASK,
 			FLAG_IF | FLAG_TF | FLAG_DF | FLAG_IOPL | FLAG_AC | FLAG_NT);
+
+	//mhy908
+	lock_init(&file_lock);
 }
 
 /* The main system call interface */

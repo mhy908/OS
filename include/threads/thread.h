@@ -5,6 +5,7 @@
 #include <list.h>
 #include <stdint.h>
 #include "threads/interrupt.h"
+#include "threads/synch.h"
 #ifdef VM
 #include "vm/vm.h"
 #endif
@@ -114,6 +115,14 @@ struct thread {
 #ifdef USERPROG
 	/* Owned by userprog/process.c. */
 	uint64_t *pml4;                     /* Page map level 4 */
+	
+	//mhy908
+	struct file *executable;
+	struct semaphore wait_sema;
+	struct semaphore cleanup_sema;
+	struct list_elem child_elem;
+	struct list children;
+	struct lock child_lock;
 #endif
 #ifdef VM
 	/* Table for whole virtual memory owned by thread. */
