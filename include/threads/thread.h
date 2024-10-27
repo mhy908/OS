@@ -117,12 +117,21 @@ struct thread {
 	uint64_t *pml4;                     /* Page map level 4 */
 	
 	//mhy908
+<<<<<<< HEAD
 	struct file *executable;
 	struct semaphore wait_sema;
 	struct semaphore cleanup_sema;
 	struct list_elem child_elem;
 	struct list children;
 	struct lock child_lock;
+=======
+	struct file *executable
+	struct semaphore wait_sema
+	struct semaphore cleanup_sema
+	struct list_elem child_elem
+	struct list children
+	struct lock child_lock
+>>>>>>> 15f876466dd3cb8cff6086aa8a39f9a9eece84a1
 #endif
 #ifdef VM
 	/* Table for whole virtual memory owned by thread. */

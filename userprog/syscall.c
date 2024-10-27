@@ -16,9 +16,12 @@
 #include "threads/flags.h"
 #include "intrinsic.h"
 #include "lib/string.h"
+<<<<<<< HEAD
 
 #include <string.h>
 #include <stdlib.h>
+=======
+>>>>>>> 15f876466dd3cb8cff6086aa8a39f9a9eece84a1
 
 void syscall_entry (void);
 void syscall_handler (struct intr_frame *);
