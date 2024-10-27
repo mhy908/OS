@@ -100,6 +100,9 @@ struct thread {
 	int nice;
 	int recent_cpu;
 
+	//wooyechan start
+	int exit; // status for exit and wait
+
 	int64_t ticks;						/*For alarm clocks*/
 	struct thread* locked_from;			/*Thread that is locked from*/
 	struct list lock_list;				/*List of locks that are acquired by this*/
