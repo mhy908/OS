@@ -16,6 +16,7 @@
 #include "threads/flags.h"
 #include "intrinsic.h"
 #include "lib/string.h"
+#include "devices/input.h"
 
 void syscall_entry (void);
 void syscall_handler (struct intr_frame *);
@@ -42,8 +43,8 @@ bool validate_pointer(void *p, size_t size, bool writable){
 	struct thread *th=thread_current();
 	void *ptr1=pg_round_down(p);
 	void *ptr2=pg_round_down(p+size);
-	for(; ptr1<=ptr2; ptr+=PGSIZE){
-		uint64_t *pte=pml4e_walk(th->pml4, (uint64_t)ptr, 0);
+	for(; ptr1<=ptr2; ptr1+=PGSIZE){
+		uint64_t *pte=pml4e_walk(th->pml4, (uint64_t)ptr1, 0);
 		if(pte==NULL||is_kern_pte(pte)||(writable&&!is_writable(pte)))return false;
 	}
 	return true;
@@ -59,10 +60,16 @@ bool validate_string(void *p){
 		if (*(char *)p == 0)return true;
 	}
 }
+void error_exit(){
+	thread_current()->exit=-1;
+	thread_exit();
+}
+
 //이게 대체 무슨코드임;;
 
 
 // wooyechan start
+
 void halt() {
 	power_off();
 }
@@ -74,7 +81,7 @@ void exit(int status) {
 	thread_exit();
 }
 
-pid_t fork (const char *thread_name); {
+tid_t fork (const char *thread_name) {
 	
 }
 
@@ -102,11 +109,35 @@ bool remove (const char *file) {
 	return ret;
 }
 int open (const char *file) {}
-int filesize (int fd) {}
-int read (int fd, void *buffer, unsigned length) {}
+int filesize (int fd){
+	int ret=-1;
+	lock_acquire(&file_lock);
+	
+	//implement
 
-int write (int fd, const void *buffer, unsigned length) {
+	lock_release(&file_lock);
+	return ret;
+}
+int read (int fd, void *buffer, unsigned length) {
+	int ret=-1;
+	if(!validate_pointer(buffer, length, true))error_exit();
+	lock_acquire(&file_lock);
+	
+	//implement
 
+	lock_release(&file_lock);
+	return ret;
+}
+
+int write (int fd, void *buffer, unsigned length) {
+	int ret=-1;
+	if(!validate_pointer(buffer, length, false))error_exit();
+	lock_acquire(&file_lock);
+	
+	//implement
+
+	lock_release(&file_lock);
+	return ret;
 }
 
 void seek (int fd, unsigned position) {}
