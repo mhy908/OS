@@ -36,6 +36,32 @@ void syscall_handler (struct intr_frame *);
 //mhy908 - lock for filesystem
 struct lock file_lock;
 
+//mhy908 - validation mechanism
+bool validate_pointer(void *p, size_t size, bool writable){
+	if(p==NULL||!is_user_vaddr(p))return false;
+	struct thread *th=thread_current();
+	void *ptr1=pg_round_down(p);
+	void *ptr2=pg_round_down(p+size);
+	for(; ptr1<=ptr2; ptr+=PGSIZE){
+		uint64_t *pte=pml4e_walk(th->pml4, (uint64_t)ptr, 0);
+		if(pte==NULL||is_kern_pte(pte)||(writable&&!is_writable(pte)))return false;
+	}
+	return true;
+}
+bool validate_string(void *p){
+	if(p==NULL||!is_user_vaddr(p))return false;
+	struct thread *th=thread_current();
+	void *ptr=pg_round_down(p);
+	for (; ; ptr += PGSIZE) {
+		uint64_t *pte=pml4e_walk(th->pml4, (uint64_t) ptr, 0);
+		if(pte==NULL||is_kern_pte(pte))return false;
+		for (; *(char *)p != 0; p++);
+		if (*(char *)p == 0)return true;
+	}
+}
+//이게 대체 무슨코드임;;
+
+
 // wooyechan start
 void halt() {
 	power_off();
