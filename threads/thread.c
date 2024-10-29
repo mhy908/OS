@@ -353,10 +353,12 @@ thread_create (const char *name, int priority,
 	t->tf.cs = SEL_KCSEG;
 	t->tf.eflags = FLAG_IF;
 
+	/*
 	//wooyechan
 	t->fd_table = palloc_get_multiple(PAL_ZERO, 2);
 	if (t->fd_table == NULL)
         return TID_ERROR; 
+	*/
 
 	//wooyechan
 	if (thread_mlfqs) {
@@ -598,8 +600,8 @@ init_thread (struct thread *t, const char *name, int priority) {
 
 	//wooyechan
 	#ifdef USERPROG
-	t->fd_index = 2;
-	list_init (&t->fd_list);
+	t->fd_index = 0;
+	list_init (&t->file_list);
 	#endif
 }
 

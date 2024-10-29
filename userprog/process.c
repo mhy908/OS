@@ -66,6 +66,18 @@ initd (void *f_name) {
 
 	process_init ();
 
+	struct thread *t=thread_current();
+	struct file_box *file_box_stdin=malloc(sizeof(struct file_box));
+	struct file_box *file_box_stdout=malloc(sizeof(struct file_box));
+
+	file_box_stdin->fd=t->fd_index++;
+	file_box_stdin->type=STDIN;
+	list_push_back(&t->file_list, &file_box_stdin->file_elem);
+
+	file_box_stdout->fd=t->fd_index++;
+	file_box_stdout->type=STDOUT;
+	list_push_back(&t->file_list, &file_box_stdout->file_elem);
+
 	if (process_exec (f_name) < 0)
 		PANIC("Fail to launch initd\n");
 	NOT_REACHED ();

@@ -37,8 +37,16 @@ void syscall_handler (struct intr_frame *);
 #define MSR_LSTAR 0xc0000082        /* Long mode SYSCALL target */
 #define MSR_SYSCALL_MASK 0xc0000084 /* Mask for the eflags */
 
-//mhy908 - lock for filesystem
+//mhy908 - lock for filesystem & paging system
 struct lock file_lock;
+struct lock page_lock;
+
+//wooyechan
+char *get_first_word (char *name) {
+	char * token, save;
+	token = strtok_r(name, " ", &save);
+	return token;
+}
 
 //mhy908 - validation mechanism
 bool validate_pointer(void *p, size_t size, bool writable){
@@ -46,69 +54,57 @@ bool validate_pointer(void *p, size_t size, bool writable){
 	struct thread *th=thread_current();
 	void *ptr1=pg_round_down(p);
 	void *ptr2=pg_round_down(p+size);
+	bool ret=true;
+
+	lock_acquire(&page_lock);
 	for(; ptr1<=ptr2; ptr1+=PGSIZE){
 		uint64_t *pte=pml4e_walk(th->pml4, (uint64_t)ptr1, 0);
-		if(pte==NULL||is_kern_pte(pte)||(writable&&!is_writable(pte)))return false;
+		if(pte==NULL||is_kern_pte(pte)||(writable&&!is_writable(pte))){
+			ret=false;
+			break;
+		}
 	}
-	return true;
+	lock_release(&page_lock);
+	return ret;
 }
 bool validate_string(void *p){
 	if(p==NULL||!is_user_vaddr(p))return false;
 	struct thread *th=thread_current();
-	void *ptr=pg_round_down(p);
-	for (; ; ptr += PGSIZE) {
-		uint64_t *pte=pml4e_walk(th->pml4, (uint64_t) ptr, 0);
-		if(pte==NULL||is_kern_pte(pte))return false;
-		for (; *(char *)p != 0; p++);
-		if (*(char *)p == 0)return true;
+	void *ptr=NULL;
+	uint64_t *pte=NULL;
+	bool ret=true;
+	
+	lock_acquire(&page_lock);
+	for(char *i=p; ; i++){
+		if(ptr!=pg_round_down(i)){
+			ptr=pg_round_down(i);
+			pte=pml4e_walk(th->pml4, (uint64_t)ptr, 0);
+			if(pte==NULL||is_kern_pte(pte)){
+				ret=false;
+				break;
+			}
+		}
+		if(*i==0)break;
 	}
+	lock_release(&page_lock);
+	return ret;
 }
-
 void error_exit(){
-	thread_current()->exit=-1;
+	struct thread * curr = thread_current();
+	curr -> exit = -1;
+	char * name = get_first_word (curr -> name);
+    printf("%s: exit(%d)\n", name, -1);
 	thread_exit();
 }
-
-//이게 대체 무슨코드임;;
-
-
-// wooyechan start
-char * get_first_word (char *name) {
-	char * token, save;
-	token = strtok_r(name, " ", &save);
-	return token;
+struct file_box* get_filebox(int fd){
+	struct list *file_list=&thread_current()->file_list;
+	struct list_elem *e;
+	for(e=list_begin(file_list); e!=list_end(file_list); e=list_next(e)){
+		struct file_box* file_box=list_entry(e, struct file_box, file_elem);
+		if(file_box->fd==fd)return file_box;
+	}
+	return NULL;
 }
-
-int push_fd (struct file *file) {
-	struct thread * curr = thread_current();
-	int fd = curr->fd_index;
-	int ret = -1;
-
-	// curr -> index < MAX_PAGE_SIZE
-	// note that fd_index start from 2
-	/*
-	File descriptors numbered 0 and 1 are reserved for the console: fd 0 (STDIN_FILENO)
-	is standard input, fd 1 (STDOUT_FILENO) is standard output.
-	*/
-	lock_acquire(&file_lock);
-
-	struct fd_box *new_fd_box = malloc(sizeof(*new_fd_box));
-
-	new_fd_box->file = file;
-	new_fd_box->fd = curr->fd_index;
-
-	// TODO : remove에서 지워진 fd는 어떻게 처리할까
-	// 정렬 후 빈 부분에 넣기?
-	curr->fd_index += 1;
-
-	list_push_back(&curr->fd_list , &new_fd_box->file_elem);
-	ret = new_fd_box->fd;
-
-	lock_release(&file_lock);
-
-	//printf ("ret : %d\n", ret);
-	return ret;
-}	
 
 void halt() {
 	power_off();
@@ -136,7 +132,7 @@ int wait (int pid) {
 
 bool create (const char *file, unsigned initial_size) {
 	/* MUST CHECK validity of file */
-	
+	if(!validate_string(file)||!strcmp(file, ""))error_exit();
 	lock_acquire(&file_lock);
 	bool ret=filesys_create(file, initial_size);
 	lock_release(&file_lock);
@@ -145,36 +141,47 @@ bool create (const char *file, unsigned initial_size) {
 
 bool remove (const char *file) {
 	/* MUST CHECK validity of file */
+	if(!validate_string(file))error_exit();
 	lock_acquire(&file_lock);
 	bool ret=filesys_remove(file);
 	lock_release(&file_lock);
 	return ret;
 }
 
-int open (const char *file) {
-	// validity (file);
+int open (const char *file_name) {
+	if(!validate_string(file_name))error_exit();
 
-	// it's from
-	// https://velog.io/@ceusun0815/Pintos-KAIST-Project-2-System-Call
-	// correct?
-	if (is_kernel_vaddr(file) || file == NULL || !pml4_get_page(thread_current()->pml4, file)) exit(-1);
+	struct thread *t=thread_current();
+	int ret=-1;
+	lock_acquire(&file_lock);
 
-	struct file * f = filesys_open(file);
-	if (f == NULL) return -1;
+	struct file *file=filesys_open(file_name);
+	if(file){
+		struct file_box *file_box=malloc(sizeof(struct file_box));
+		struct file_container *file_container=malloc(sizeof(struct file_container));
+		
+		file_container->file=file;
+		file_container->cnt=1;
+		file_box->fd=t->fd_index++;
+		ret=file_box->fd;
+		file_box->file_container=file_container;
+		file_box->type=FILE;
+		list_push_back(&t->file_list, &file_box->file_elem);
+	}
+	else{
+		file_close(file);
+	}
 
-	int fd = push_fd(f);
-
-	if (fd == -1) file_close(f);
-	return fd;
+	lock_release(&file_lock);
+	return ret;
 }
 
 int filesize (int fd){
 	int ret=-1;
 	lock_acquire(&file_lock);
-	
-	struct thread * curr = thread_current();
-	//implement
-	/// shoulrd search that same fd in fd_list
+
+	struct file_box *file_box=get_filebox(fd);
+	if(file_box)ret=file_length(file_box->file_container->file);
 
 	lock_release(&file_lock);
 	return ret;
@@ -185,7 +192,18 @@ int read (int fd, void *buffer, unsigned length) {
 	if(!validate_pointer(buffer, length, true))error_exit();
 	lock_acquire(&file_lock);
 	
-	//implement
+	char *buf=(char*)buffer;
+	struct file_box *file_box=get_filebox(fd);
+	if(file_box){
+		switch(file_box->type){
+			case STDIN:
+				for(unsigned i=0; i<length; i++)buf[i]=input_getc();
+				break;
+			case FILE:
+				ret=file_read(file_box->file_container->file, buffer, length);
+				break;
+		}
+	}
 
 	lock_release(&file_lock);
 	return ret;
@@ -196,18 +214,57 @@ int write (int fd, void *buffer, unsigned length) {
 	if(!validate_pointer(buffer, length, false))error_exit();
 	lock_acquire(&file_lock);
 	
-	if (fd == STDOUT_FILENO)
-		putbuf(buffer, length);
-	ret = length;
+	struct file_box *file_box=get_filebox(fd);
+	if(file_box){
+		switch(file_box->type){
+			case STDOUT:
+				putbuf(buffer, length);
+				break;
+			case FILE:
+				ret=file_write(file_box->file_container->file, buffer, length);
+				break;
+		}
+	}
 
 	lock_release(&file_lock);
 	return ret;
 }
 
-void seek (int fd, unsigned position) {}
-unsigned tell (int fd) {}
-void close (int fd) {}
-// wooyechan end
+void seek (int fd, unsigned position) {
+	lock_acquire(&file_lock);
+	struct file_box* file_box=get_filebox(fd);
+	if(file_box&&file_box->type==FILE){
+		file_seek(file_box->file_container->file, position);
+	}
+	lock_release(&file_lock);
+}
+
+int tell (int fd) {
+	int ret=-1;
+	lock_acquire(&file_lock);
+	struct file_box* file_box=get_filebox(fd);
+	if(file_box&&file_box->type==FILE){
+		ret=file_tell(file_box->file_container->file);
+	}
+	lock_release(&file_lock);
+	return ret;
+}
+
+void close (int fd) {
+	lock_acquire(&file_lock);
+	struct file_box *file_box=get_filebox(fd);
+	if(file_box){
+		list_remove(&(file_box->file_elem));
+		if(file_box->type==FILE){
+			if(--file_box->file_container->cnt==0){
+				file_close(file_box->file_container->file);
+				free(file_box->file_container);
+			}
+		}
+		free(file_box);
+	}
+	lock_release(&file_lock);
+}
 
 void
 syscall_init (void) {
@@ -223,6 +280,7 @@ syscall_init (void) {
 
 	//mhy908
 	lock_init(&file_lock);
+	lock_init(&page_lock);
 }
 
 /* The main system call interface */
@@ -240,55 +298,52 @@ syscall_handler (struct intr_frame *f) {
 	the rax member of struct intr_frame
 	*/
 	uint64_t syscall_number = f->R.rax;
-	uint64_t first_arg = f->R.rdi;
+	uint64_t rdi=f->R.rdi, rsi=f->R.rsi, rdx=f->R.rdx;
 	int pid;
 	//printf ("syscall_number : %d\n", syscall_number);
-	switch (syscall_number)
-	{
+	switch (syscall_number){
 	case SYS_HALT:
 		halt();
 		break;	
 	case SYS_EXIT:
-		exit(first_arg);
+		exit(rdi);
 		break;	
 	case SYS_FORK:
-		fork(first_arg);
+		f->R.rax = fork(rdi);
 		break;			
 	case SYS_EXEC:
-		exec(first_arg);
+		f->R.rax = exec(rdi);
 		break;	
 	case SYS_WAIT:
-		f->R.rax = wait(first_arg);
+		f->R.rax = wait(rdi);
 		break;	
 	case SYS_CREATE:
-		f->R.rax = create(first_arg, f->R.rsi);		
+		f->R.rax = create(rdi, rsi);		
 		break;	
 	case SYS_REMOVE:
-		f->R.rax = remove(first_arg);		
+		f->R.rax = remove(rdi);		
 		break;	
 	case SYS_OPEN:
-		f->R.rax = open(first_arg);
+		f->R.rax = open(rdi);
 		break;		
 	case SYS_FILESIZE:
-		f->R.rax = filesize(first_arg);
+		f->R.rax = filesize(rdi);
 		break;	
 	case SYS_READ:
-		read(first_arg, f->R.rsi, f->R.rdx);
+		f->R.rax = read(rdi, rsi, rdx);
 		break;	
 	case SYS_WRITE:
-		f->R.rax = write(first_arg, f->R.rsi, f->R.rdx);
+		f->R.rax = write(rdi, rsi, rdx);
 		break;			
 	case SYS_SEEK:
-		seek(first_arg, f->R.rsi);		
+		seek(rdi, rsi);		
 		break;	
 	case SYS_TELL:
-		tell(first_arg);
+		f->R.rax = tell(rdi);
 		break;			
 	case SYS_CLOSE:
-		close(first_arg);
+		close(rdi);
 		break;	
 	}
-
-	//printf ("switch case done\n");
 	// wooyechan end
 }

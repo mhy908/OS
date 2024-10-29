@@ -108,7 +108,7 @@ struct thread {
 
 	/* Shared between thread.c and synch.c. */
 	struct list_elem elem;              /* List element. */
-	struct list_elem lock_elem;              /* List element. */
+	struct list_elem lock_elem;         /* List element. */
 
 #ifdef USERPROG
 	/* Owned by userprog/process.c. */
@@ -129,10 +129,8 @@ struct thread {
 	// 1. make new struct that containing file info, and put in struct list.
 	// 2. double pointer
 	// TODO : which one is better?
-	struct file ** fd_table; // fd_table for each thread(process)
 	int fd_index;
-
-	struct list fd_list;
+	struct list file_list;
 	
 #endif
 #ifdef VM
@@ -145,8 +143,13 @@ struct thread {
 	unsigned magic;                     /* Detects stack overflow. */
 };
 
-struct fd_box {
-	struct file * file;
+struct file_container{
+	struct file *file;
+	int cnt;
+};
+struct file_box{
+	enum{STDIN, STDOUT, FILE} type;
+	struct file_container *file_container;
 	int fd;
 	struct list_elem file_elem;
 };
