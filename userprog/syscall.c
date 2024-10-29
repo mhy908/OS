@@ -81,7 +81,6 @@ char * get_first_word (char *name) {
 
 int push_fd (struct file *file) {
 	struct thread * curr = thread_current();
-	struct file ** fd_table = curr->fd_table;
 	int fd = curr->fd_index;
 	int ret = -1;
 
@@ -98,6 +97,8 @@ int push_fd (struct file *file) {
 	new_fd_box->file = file;
 	new_fd_box->fd = curr->fd_index;
 
+	// TODO : remove에서 지워진 fd는 어떻게 처리할까
+	// 정렬 후 빈 부분에 넣기?
 	curr->fd_index += 1;
 
 	list_push_back(&curr->fd_list , &new_fd_box->file_elem);
@@ -105,7 +106,7 @@ int push_fd (struct file *file) {
 
 	lock_release(&file_lock);
 
-	printf ("ret : %d", ret);
+	//printf ("ret : %d\n", ret);
 	return ret;
 }	
 
@@ -152,11 +153,17 @@ bool remove (const char *file) {
 
 int open (const char *file) {
 	// validity (file);
+
+	// it's from
+	// https://velog.io/@ceusun0815/Pintos-KAIST-Project-2-System-Call
+	// correct?
+	if (is_kernel_vaddr(file) || file == NULL || !pml4_get_page(thread_current()->pml4, file)) exit(-1);
+
 	struct file * f = filesys_open(file);
 	if (f == NULL) return -1;
 
 	int fd = push_fd(f);
-	
+
 	if (fd == -1) file_close(f);
 	return fd;
 }
@@ -166,9 +173,8 @@ int filesize (int fd){
 	lock_acquire(&file_lock);
 	
 	struct thread * curr = thread_current();
-	struct file * file = curr -> fd_table[fd];
-	if (file == NULL) ret = -1;
-	else ret = file_length(file);
+	//implement
+	/// shoulrd search that same fd in fd_list
 
 	lock_release(&file_lock);
 	return ret;
@@ -241,34 +247,48 @@ syscall_handler (struct intr_frame *f) {
 	{
 	case SYS_HALT:
 		halt();
+		break;	
 	case SYS_EXIT:
 		exit(first_arg);
+		break;	
 	case SYS_FORK:
-		fork(first_arg);		
+		fork(first_arg);
+		break;			
 	case SYS_EXEC:
 		exec(first_arg);
+		break;	
 	case SYS_WAIT:
 		f->R.rax = wait(first_arg);
+		break;	
 	case SYS_CREATE:
 		f->R.rax = create(first_arg, f->R.rsi);		
+		break;	
 	case SYS_REMOVE:
 		f->R.rax = remove(first_arg);		
+		break;	
 	case SYS_OPEN:
-		f->R.rax = open(f->R.rdi);		
+		f->R.rax = open(first_arg);
+		break;		
 	case SYS_FILESIZE:
 		f->R.rax = filesize(first_arg);
+		break;	
 	case SYS_READ:
 		read(first_arg, f->R.rsi, f->R.rdx);
+		break;	
 	case SYS_WRITE:
-		f->R.rax = write(first_arg, f->R.rsi, f->R.rdx);		
+		f->R.rax = write(first_arg, f->R.rsi, f->R.rdx);
+		break;			
 	case SYS_SEEK:
 		seek(first_arg, f->R.rsi);		
+		break;	
 	case SYS_TELL:
-		tell(first_arg);		
+		tell(first_arg);
+		break;			
 	case SYS_CLOSE:
 		close(first_arg);
+		break;	
 	}
 
-	printf ("switch case done\n");
+	//printf ("switch case done\n");
 	// wooyechan end
 }
