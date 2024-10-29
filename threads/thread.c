@@ -333,6 +333,7 @@ thread_create (const char *name, int priority,
     struct thread * curr_thread = thread_current();
 
 	/* Allocate thread. */
+	
 	t = palloc_get_page (PAL_ZERO);
 	if (t == NULL)
 		return TID_ERROR;
@@ -351,6 +352,11 @@ thread_create (const char *name, int priority,
 	t->tf.ss = SEL_KDSEG;
 	t->tf.cs = SEL_KCSEG;
 	t->tf.eflags = FLAG_IF;
+
+	//wooyechan
+	t->fd_table = palloc_get_multiple(PAL_ZERO, 2);
+	if (t->fd_table == NULL)
+        return TID_ERROR; 
 
 	//wooyechan
 	if (thread_mlfqs) {
@@ -589,6 +595,12 @@ init_thread (struct thread *t, const char *name, int priority) {
 	t->priority = priority;
 	t->cur_priority=priority;
 	t->magic = THREAD_MAGIC;
+
+	//wooyechan
+	#ifdef USERPROG
+	t->fd_index = 2;
+	list_init (&t->fd_list);
+	#endif
 }
 
 /* Chooses and returns the next thread to be scheduled.  Should

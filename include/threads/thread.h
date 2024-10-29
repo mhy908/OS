@@ -102,9 +102,6 @@ struct thread {
 	int nice;
 	int recent_cpu;
 
-	//wooyechan start
-	int exit; // status for exit and wait
-
 	int64_t ticks;						/*For alarm clocks*/
 	struct thread* locked_from;			/*Thread that is locked from*/
 	struct list lock_list;				/*List of locks that are acquired by this*/
@@ -124,6 +121,19 @@ struct thread {
 	struct list_elem child_elem;
 	struct list children;
 	struct lock child_lock;
+
+	// wooyechan
+	int exit; // status for exit and wait
+
+	// TWO way for define fd table.
+	// 1. make new struct that containing file info, and put in struct list.
+	// 2. double pointer
+	// TODO : which one is better?
+	struct file ** fd_table; // fd_table for each thread(process)
+	int fd_index;
+
+	struct list fd_list;
+	
 #endif
 #ifdef VM
 	/* Table for whole virtual memory owned by thread. */
@@ -133,6 +143,12 @@ struct thread {
 	/* Owned by thread.c. */
 	struct intr_frame tf;               /* Information for switching */
 	unsigned magic;                     /* Detects stack overflow. */
+};
+
+struct fd_box {
+	struct file * file;
+	int fd;
+	struct list_elem file_elem;
 };
 
 /* If false (default), use round-robin scheduler.
