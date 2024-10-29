@@ -29,6 +29,7 @@ typedef int tid_t;
 #define PRI_DEFAULT 31                  /* Default priority. */
 #define PRI_MAX 63                      /* Highest priority. */
 
+
 /* A kernel thread or user process.
  *
  * Each thread structure is stored in its own 4 kB page.  The
@@ -129,7 +130,7 @@ struct thread {
 	// 2. double pointer
 	// TODO : which one is better?
 	struct file ** fd_table; // fd_table for each thread(process)
-	int curr_fd;
+	int fd_index;
 
 	
 #endif

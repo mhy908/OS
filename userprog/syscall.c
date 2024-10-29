@@ -16,6 +16,7 @@
 #include "threads/flags.h"
 #include "intrinsic.h"
 #include "lib/string.h"
+#include "devices/input.h"
 
 #include <string.h>
 #include <stdlib.h>
@@ -41,6 +42,38 @@ void syscall_handler (struct intr_frame *);
 //mhy908 - lock for filesystem
 struct lock file_lock;
 
+//mhy908 - validation mechanism
+bool validate_pointer(void *p, size_t size, bool writable){
+	if(p==NULL||!is_user_vaddr(p))return false;
+	struct thread *th=thread_current();
+	void *ptr1=pg_round_down(p);
+	void *ptr2=pg_round_down(p+size);
+	for(; ptr1<=ptr2; ptr1+=PGSIZE){
+		uint64_t *pte=pml4e_walk(th->pml4, (uint64_t)ptr1, 0);
+		if(pte==NULL||is_kern_pte(pte)||(writable&&!is_writable(pte)))return false;
+	}
+	return true;
+}
+bool validate_string(void *p){
+	if(p==NULL||!is_user_vaddr(p))return false;
+	struct thread *th=thread_current();
+	void *ptr=pg_round_down(p);
+	for (; ; ptr += PGSIZE) {
+		uint64_t *pte=pml4e_walk(th->pml4, (uint64_t) ptr, 0);
+		if(pte==NULL||is_kern_pte(pte))return false;
+		for (; *(char *)p != 0; p++);
+		if (*(char *)p == 0)return true;
+	}
+}
+
+void error_exit(){
+	thread_current()->exit=-1;
+	thread_exit();
+}
+
+//이게 대체 무슨코드임;;
+
+
 // wooyechan start
 char * get_first_word (char *name) {
 	char * token, save;
@@ -50,14 +83,15 @@ char * get_first_word (char *name) {
 
 int push_fd (struct file *file) {
 	struct thread * curr = thread_current();
-	
+	struct file ** fd_table = curr->fd_table;
+	int fd = curr->fd_index;
+
 	// curr -> index < MAX_PAGE_SIZE
 	// note that fd_index start from 2
 	/*
 	File descriptors numbered 0 and 1 are reserved for the console: fd 0 (STDIN_FILENO)
 	is standard input, fd 1 (STDOUT_FILENO) is standard output.
 	*/
-	int fd = 2;
 	lock_acquire(&file_lock);
 	while (fd < MAX_FD && curr->fd_table[fd] != NULL) {
 		fd++;
@@ -68,7 +102,8 @@ int push_fd (struct file *file) {
 		return -1;
 	}
 
-	curr->fd_table[fd] = file;
+	curr->fd_index = fd;
+	fd_table[fd] = file;
 	lock_release(&file_lock);
 	return fd;
 }	
@@ -85,7 +120,7 @@ void exit(int status) {
 	thread_exit();
 }
 
-int fork (const char *thread_name) {
+tid_t fork (const char *thread_name) {
 	
 }
 
@@ -117,34 +152,49 @@ bool remove (const char *file) {
 int open (const char *file) {
 	// validity (file);
 	struct file * f = filesys_open(file);
-	//if (f == NULL) return -1;
+	if (f == NULL) return -1;
 
 	int fd = push_fd(f);
 	
-	printf("FD : %d \n", fd);
-
-	if (fd <= 1) return -1;
+	if (fd == -1) file_close(f);
 	return fd;
 }
 
-int filesize (int fd) {
-	if (fd < 0) return -1;
-
+int filesize (int fd){
+	int ret=-1;
+	lock_acquire(&file_lock);
+	
 	struct thread * curr = thread_current();
 	struct file * file = curr -> fd_table[fd];
-	if (file == NULL) return -1;
-	return file_length(file);
+	if (file == NULL) ret = -1;
+	else ret = file_length(file);
+
+	lock_release(&file_lock);
+	return ret;
 }
 
 int read (int fd, void *buffer, unsigned length) {
+	int ret=-1;
+	if(!validate_pointer(buffer, length, true))error_exit();
+	lock_acquire(&file_lock);
+	
+	//implement
 
-
+	lock_release(&file_lock);
+	return ret;
 }
 
-int write (int fd, const void *buffer, unsigned length) {
+int write (int fd, void *buffer, unsigned length) {
+	int ret=-1;
+	if(!validate_pointer(buffer, length, false))error_exit();
+	lock_acquire(&file_lock);
+	
 	if (fd == STDOUT_FILENO)
 		putbuf(buffer, length);
-	return length;
+	ret = length;
+
+	lock_release(&file_lock);
+	return ret;
 }
 
 void seek (int fd, unsigned position) {}
