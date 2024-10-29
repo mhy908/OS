@@ -18,6 +18,9 @@
 #include "lib/string.h"
 #include "devices/input.h"
 
+#include <string.h>
+#include <stdlib.h>
+
 void syscall_entry (void);
 void syscall_handler (struct intr_frame *);
 
@@ -60,6 +63,7 @@ bool validate_string(void *p){
 		if (*(char *)p == 0)return true;
 	}
 }
+
 void error_exit(){
 	thread_current()->exit=-1;
 	thread_exit();
@@ -69,6 +73,42 @@ void error_exit(){
 
 
 // wooyechan start
+char * get_first_word (char *name) {
+	char * token, save;
+	token = strtok_r(name, " ", &save);
+	return token;
+}
+
+int push_fd (struct file *file) {
+	struct thread * curr = thread_current();
+	int fd = curr->fd_index;
+	int ret = -1;
+
+	// curr -> index < MAX_PAGE_SIZE
+	// note that fd_index start from 2
+	/*
+	File descriptors numbered 0 and 1 are reserved for the console: fd 0 (STDIN_FILENO)
+	is standard input, fd 1 (STDOUT_FILENO) is standard output.
+	*/
+	lock_acquire(&file_lock);
+
+	struct fd_box *new_fd_box = malloc(sizeof(*new_fd_box));
+
+	new_fd_box->file = file;
+	new_fd_box->fd = curr->fd_index;
+
+	// TODO : remove에서 지워진 fd는 어떻게 처리할까
+	// 정렬 후 빈 부분에 넣기?
+	curr->fd_index += 1;
+
+	list_push_back(&curr->fd_list , &new_fd_box->file_elem);
+	ret = new_fd_box->fd;
+
+	lock_release(&file_lock);
+
+	//printf ("ret : %d\n", ret);
+	return ret;
+}	
 
 void halt() {
 	power_off();
@@ -77,7 +117,8 @@ void halt() {
 void exit(int status) {
 	struct thread * curr = thread_current();
 	curr -> exit = status;
-	printf ("%s: exit(%d)\n", curr -> name, status);
+	char * name = get_first_word (curr -> name);
+    printf("%s: exit(%d)\n", name, status);
 	thread_exit();
 }
 
@@ -89,7 +130,9 @@ int exec (const char *file) {
 	
 }
 
-int wait (int pid) {}
+int wait (int pid) {
+	return 0;
+}
 
 bool create (const char *file, unsigned initial_size) {
 	/* MUST CHECK validity of file */
@@ -102,22 +145,41 @@ bool create (const char *file, unsigned initial_size) {
 
 bool remove (const char *file) {
 	/* MUST CHECK validity of file */
-
 	lock_acquire(&file_lock);
 	bool ret=filesys_remove(file);
 	lock_release(&file_lock);
 	return ret;
 }
-int open (const char *file) {}
+
+int open (const char *file) {
+	// validity (file);
+
+	// it's from
+	// https://velog.io/@ceusun0815/Pintos-KAIST-Project-2-System-Call
+	// correct?
+	if (is_kernel_vaddr(file) || file == NULL || !pml4_get_page(thread_current()->pml4, file)) exit(-1);
+
+	struct file * f = filesys_open(file);
+	if (f == NULL) return -1;
+
+	int fd = push_fd(f);
+
+	if (fd == -1) file_close(f);
+	return fd;
+}
+
 int filesize (int fd){
 	int ret=-1;
 	lock_acquire(&file_lock);
 	
+	struct thread * curr = thread_current();
 	//implement
+	/// shoulrd search that same fd in fd_list
 
 	lock_release(&file_lock);
 	return ret;
 }
+
 int read (int fd, void *buffer, unsigned length) {
 	int ret=-1;
 	if(!validate_pointer(buffer, length, true))error_exit();
@@ -134,9 +196,9 @@ int write (int fd, void *buffer, unsigned length) {
 	if(!validate_pointer(buffer, length, false))error_exit();
 	lock_acquire(&file_lock);
 	
-	printf("??? %s\n", (char*)buffer);
-
-	//implement
+	if (fd == STDOUT_FILENO)
+		putbuf(buffer, length);
+	ret = length;
 
 	lock_release(&file_lock);
 	return ret;
@@ -172,55 +234,61 @@ syscall_handler (struct intr_frame *f) {
 	Thus, when the system call handler syscall_handler() gets control,
 	the system call number is in the rax, and arguments are passed with 
 	the order %rdi, %rsi, %rdx, %r10, %r8, and %r9. 
+
+	The x86-64 convention for function return values is to place them in
+	the RAX register. System calls that return a value can do so by modifying
+	the rax member of struct intr_frame
 	*/
 	uint64_t syscall_number = f->R.rax;
 	uint64_t first_arg = f->R.rdi;
 	int pid;
-	printf ("syscall_number : %d\n", syscall_number);
+	//printf ("syscall_number : %d\n", syscall_number);
 	switch (syscall_number)
 	{
 	case SYS_HALT:
 		halt();
-		break;
+		break;	
 	case SYS_EXIT:
 		exit(first_arg);
-		break;
-	case SYS_FORK:
-		fork(first_arg);	
 		break;	
+	case SYS_FORK:
+		fork(first_arg);
+		break;			
 	case SYS_EXEC:
 		exec(first_arg);
-		break;
+		break;	
 	case SYS_WAIT:
-		wait(first_arg);
-		break;
+		f->R.rax = wait(first_arg);
+		break;	
 	case SYS_CREATE:
-		create(first_arg, f->R.rsi);
-		break;		
+		f->R.rax = create(first_arg, f->R.rsi);		
+		break;	
 	case SYS_REMOVE:
-		remove(first_arg);		
-		break;
+		f->R.rax = remove(first_arg);		
+		break;	
 	case SYS_OPEN:
-		open(first_arg);		
-		break;
+		f->R.rax = open(first_arg);
+		break;		
 	case SYS_FILESIZE:
-		filesize(first_arg);
-		break;
+		f->R.rax = filesize(first_arg);
+		break;	
 	case SYS_READ:
 		read(first_arg, f->R.rsi, f->R.rdx);
-		break;
-	case SYS_WRITE:
-		write(first_arg, f->R.rsi, f->R.rdx);	
 		break;	
+	case SYS_WRITE:
+		f->R.rax = write(first_arg, f->R.rsi, f->R.rdx);
+		break;			
 	case SYS_SEEK:
 		seek(first_arg, f->R.rsi);		
-		break;
+		break;	
 	case SYS_TELL:
-		tell(first_arg);		
-		break;
+		tell(first_arg);
+		break;			
 	case SYS_CLOSE:
 		close(first_arg);
-		break;
+		break;	
 	}
+
+	//printf ("switch case done\n");
 	// wooyechan end
 }
