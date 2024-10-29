@@ -86,7 +86,7 @@ tid_t fork (const char *thread_name) {
 }
 
 int exec (const char *file) {
-
+	
 }
 
 int wait (int pid) {}
@@ -134,6 +134,8 @@ int write (int fd, void *buffer, unsigned length) {
 	if(!validate_pointer(buffer, length, false))error_exit();
 	lock_acquire(&file_lock);
 	
+	printf("??? %s\n", (char*)buffer);
+
 	//implement
 
 	lock_release(&file_lock);
@@ -179,32 +181,46 @@ syscall_handler (struct intr_frame *f) {
 	{
 	case SYS_HALT:
 		halt();
+		break;
 	case SYS_EXIT:
 		exit(first_arg);
+		break;
 	case SYS_FORK:
-		fork(first_arg);		
+		fork(first_arg);	
+		break;	
 	case SYS_EXEC:
 		exec(first_arg);
+		break;
 	case SYS_WAIT:
 		wait(first_arg);
+		break;
 	case SYS_CREATE:
-		create(first_arg, f->R.rsi);		
+		create(first_arg, f->R.rsi);
+		break;		
 	case SYS_REMOVE:
 		remove(first_arg);		
+		break;
 	case SYS_OPEN:
 		open(first_arg);		
+		break;
 	case SYS_FILESIZE:
 		filesize(first_arg);
+		break;
 	case SYS_READ:
 		read(first_arg, f->R.rsi, f->R.rdx);
+		break;
 	case SYS_WRITE:
-		write(first_arg, f->R.rsi, f->R.rdx);		
+		write(first_arg, f->R.rsi, f->R.rdx);	
+		break;	
 	case SYS_SEEK:
 		seek(first_arg, f->R.rsi);		
+		break;
 	case SYS_TELL:
 		tell(first_arg);		
+		break;
 	case SYS_CLOSE:
 		close(first_arg);
+		break;
 	}
 	// wooyechan end
 }

@@ -177,12 +177,12 @@ process_exec (void *f_name) {
     }
     argv[argc] = NULL;
 
-	/*
-	printf("Arguments parsed, argc = %d\n", argc);
-    for (int i = 0; i < argc; i++) {
-        printf("argv[%d] = %s\n", i, argv[i]);
-    }
-	*/
+	
+	//printf("Arguments parsed, argc = %d\n", argc);
+    //for (int i = 0; i < argc; i++) {
+    //    printf("argv[%d] = %s\n", i, argv[i]);
+    //}
+	
 
 	/* We cannot use the intr_frame in the thread structure.
 	 * This is because when current thread rescheduled,
@@ -237,8 +237,8 @@ process_exec (void *f_name) {
     _if.R.rsi = _if.rsp + 8; 
 
 	// for debug
-	hex_dump(_if.rsp, _if.rsp, USER_STACK - (uint64_t)*(&_if.rsp), true);
-    printf("Registers setup: RDI = %d, RSI = %p\n", _if.R.rdi, (void *)_if.R.rsi);
+	//hex_dump(_if.rsp, _if.rsp, USER_STACK - (uint64_t)*(&_if.rsp), true);
+    //printf("Registers setup: RDI = %d, RSI = %p\n", _if.R.rdi, (void *)_if.R.rsi);
 	/* Start switched process. */
 	do_iret (&_if);
 	
