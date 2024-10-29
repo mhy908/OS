@@ -132,6 +132,7 @@ struct thread {
 	struct file ** fd_table; // fd_table for each thread(process)
 	int fd_index;
 
+	struct list fd_list;
 	
 #endif
 #ifdef VM
@@ -142,6 +143,12 @@ struct thread {
 	/* Owned by thread.c. */
 	struct intr_frame tf;               /* Information for switching */
 	unsigned magic;                     /* Detects stack overflow. */
+};
+
+struct fd_box {
+	struct file * file;
+	int fd;
+	struct list_elem file_elem;
 };
 
 /* If false (default), use round-robin scheduler.

@@ -37,8 +37,6 @@ void syscall_handler (struct intr_frame *);
 #define MSR_LSTAR 0xc0000082        /* Long mode SYSCALL target */
 #define MSR_SYSCALL_MASK 0xc0000084 /* Mask for the eflags */
 
-//wooyechan - max size of fd_table
-#define MAX_FD 128
 //mhy908 - lock for filesystem
 struct lock file_lock;
 
@@ -85,6 +83,7 @@ int push_fd (struct file *file) {
 	struct thread * curr = thread_current();
 	struct file ** fd_table = curr->fd_table;
 	int fd = curr->fd_index;
+	int ret = -1;
 
 	// curr -> index < MAX_PAGE_SIZE
 	// note that fd_index start from 2
@@ -93,19 +92,21 @@ int push_fd (struct file *file) {
 	is standard input, fd 1 (STDOUT_FILENO) is standard output.
 	*/
 	lock_acquire(&file_lock);
-	while (fd < MAX_FD && curr->fd_table[fd] != NULL) {
-		fd++;
-	}
 
-	if (fd >= MAX_FD) {
-		lock_release(&file_lock);
-		return -1;
-	}
+	struct fd_box *new_fd_box = malloc(sizeof(*new_fd_box));
 
-	curr->fd_index = fd;
-	fd_table[fd] = file;
+	new_fd_box->file = file;
+	new_fd_box->fd = curr->fd_index;
+
+	curr->fd_index += 1;
+
+	list_push_back(&curr->fd_list , &new_fd_box->file_elem);
+	ret = new_fd_box->fd;
+
 	lock_release(&file_lock);
-	return fd;
+
+	printf ("ret : %d", ret);
+	return ret;
 }	
 
 void halt() {
@@ -253,7 +254,7 @@ syscall_handler (struct intr_frame *f) {
 	case SYS_REMOVE:
 		f->R.rax = remove(first_arg);		
 	case SYS_OPEN:
-		f->R.rax = open(first_arg);		
+		f->R.rax = open(f->R.rdi);		
 	case SYS_FILESIZE:
 		f->R.rax = filesize(first_arg);
 	case SYS_READ:
@@ -267,5 +268,7 @@ syscall_handler (struct intr_frame *f) {
 	case SYS_CLOSE:
 		close(first_arg);
 	}
+
+	printf ("switch case done\n");
 	// wooyechan end
 }

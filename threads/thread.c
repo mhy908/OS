@@ -599,6 +599,7 @@ init_thread (struct thread *t, const char *name, int priority) {
 	//wooyechan
 	#ifdef USERPROG
 	t->fd_index = 2;
+	list_init (&t->fd_list);
 	#endif
 }
 
