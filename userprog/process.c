@@ -285,16 +285,40 @@ process_wait (tid_t child_tid) {
 	return -1;
 }
 
+//wooyechan
+char *get_first_word (char *name) {
+	char * token, save;
+	token = strtok_r(name, " ", &save);
+	return token;
+}
+
 /* Exit the process. This function is called by thread_exit (). */
 void
 process_exit (void) {
-	struct thread *curr = thread_current ();
+	struct thread *t = thread_current ();
 	/* TODO: Your code goes here.
 	 * TODO: Implement process termination message (see
 	 * TODO: project2/process_termination.html).
 	 * TODO: We recommend you to implement process resource cleanup here. */
+	
+	while(!list_empty(&t->file_list)){
+		struct list_elem *elem=list_pop_front(&t->file_list);
+		struct file_box *file_box=list_entry(elem, struct file_box, file_elem);
+		if(file_box->type==FILE){
+			if(--file_box->file_container->cnt==0){
+				file_close(file_box->file_container->file);
+				free(file_box->file_container);
+			}
+		}
+		free(file_box);
+	}
 
 	process_cleanup ();
+
+	if(t->executable)file_close(t->executable);
+
+	char* name = get_first_word (t->name);
+	printf("%s: exit(%d)\n", name, t->exit);
 }
 
 /* Free the current process's resources. */
@@ -499,7 +523,14 @@ load (const char *file_name, struct intr_frame *if_) {
 
 done:
 	/* We arrive here whether the load is successful or not. */
-	file_close (file);
+	if(success){
+		file_deny_write(file);
+		t->executable=file;
+	}
+	else{
+		file_close (file);
+		t->executable=NULL;
+	}
 	return success;
 }
 
