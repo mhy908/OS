@@ -16,12 +16,9 @@
 #include "threads/flags.h"
 #include "intrinsic.h"
 #include "lib/string.h"
-<<<<<<< HEAD
 
 #include <string.h>
 #include <stdlib.h>
-=======
->>>>>>> 15f876466dd3cb8cff6086aa8a39f9a9eece84a1
 
 void syscall_entry (void);
 void syscall_handler (struct intr_frame *);
@@ -39,15 +36,42 @@ void syscall_handler (struct intr_frame *);
 #define MSR_LSTAR 0xc0000082        /* Long mode SYSCALL target */
 #define MSR_SYSCALL_MASK 0xc0000084 /* Mask for the eflags */
 
+//wooyechan - max size of fd_table
+#define MAX_FD 128
 //mhy908 - lock for filesystem
 struct lock file_lock;
 
 // wooyechan start
-char * get_first_word (char * name) {
+char * get_first_word (char *name) {
 	char * token, save;
 	token = strtok_r(name, " ", &save);
 	return token;
 }
+
+int push_fd (struct file *file) {
+	struct thread * curr = thread_current();
+	
+	// curr -> index < MAX_PAGE_SIZE
+	// note that fd_index start from 2
+	/*
+	File descriptors numbered 0 and 1 are reserved for the console: fd 0 (STDIN_FILENO)
+	is standard input, fd 1 (STDOUT_FILENO) is standard output.
+	*/
+	int fd = 2;
+	lock_acquire(&file_lock);
+	while (fd < MAX_FD && curr->fd_table[fd] != NULL) {
+		fd++;
+	}
+
+	if (fd >= MAX_FD) {
+		lock_release(&file_lock);
+		return -1;
+	}
+
+	curr->fd_table[fd] = file;
+	lock_release(&file_lock);
+	return fd;
+}	
 
 void halt() {
 	power_off();
@@ -90,16 +114,32 @@ bool remove (const char *file) {
 	return ret;
 }
 
-int open (int fd) {
+int open (const char *file) {
+	// validity (file);
+	struct file * f = filesys_open(file);
+	//if (f == NULL) return -1;
 
+	int fd = push_fd(f);
+	
+	printf("FD : %d \n", fd);
+
+	if (fd <= 1) return -1;
+	return fd;
 }
 
 int filesize (int fd) {
-	// TODO : where is the file?
-	return 0;
+	if (fd < 0) return -1;
+
+	struct thread * curr = thread_current();
+	struct file * file = curr -> fd_table[fd];
+	if (file == NULL) return -1;
+	return file_length(file);
 }
 
-int read (int fd, void *buffer, unsigned length) {}
+int read (int fd, void *buffer, unsigned length) {
+
+
+}
 
 int write (int fd, const void *buffer, unsigned length) {
 	if (fd == STDOUT_FILENO)

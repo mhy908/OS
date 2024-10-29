@@ -352,6 +352,8 @@ thread_create (const char *name, int priority,
 	t->tf.cs = SEL_KCSEG;
 	t->tf.eflags = FLAG_IF;
 
+
+
 	//wooyechan
 	if (thread_mlfqs) {
 		t->recent_cpu = curr_thread->recent_cpu;
@@ -589,6 +591,11 @@ init_thread (struct thread *t, const char *name, int priority) {
 	t->priority = priority;
 	t->cur_priority=priority;
 	t->magic = THREAD_MAGIC;
+
+	//wooyechan
+	#ifdef USERPROG
+	t->curr_fd = 2;
+	#endif
 }
 
 /* Chooses and returns the next thread to be scheduled.  Should
