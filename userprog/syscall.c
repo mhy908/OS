@@ -129,9 +129,15 @@ int wait (int pid) {
 bool create (const char *file, unsigned initial_size) {
 	/* MUST CHECK validity of file */
 	if(!validate_string(file)||!strcmp(file, ""))error_exit();
+
+	printf("FILE NAME = %s\n", file);
+
 	lock_acquire(&file_lock);
+	printf("DID LOCK ACQUIRE\n");
 	bool ret=filesys_create(file, initial_size);
+	printf("DID CREATE\n");
 	lock_release(&file_lock);
+	printf("DID LOCK RELEASE\n");
 	return ret;
 }
 
