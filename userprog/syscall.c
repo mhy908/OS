@@ -12,6 +12,7 @@
 #include "threads/mmu.h"
 #include "filesys/file.h"
 #include "filesys/filesys.h"
+#include "filesys/inode.h"
 #include "userprog/gdt.h"
 #include "threads/flags.h"
 #include "intrinsic.h"
@@ -258,6 +259,44 @@ void close (int fd) {
 	lock_release(&file_lock);
 }
 
+int dup2(int oldfd, int newfd){
+	int ret=-1;
+	if(newfd<0)return ret;
+
+	lock_acquire(&file_lock);
+
+	struct file_box *old_file_box=get_filebox(oldfd);
+	struct file_box *new_file_box=get_filebox(newfd);
+	if(!old_file_box){
+		//do nothing
+	}
+	else if(oldfd==newfd){
+		ret=oldfd;
+	}
+	else{
+		if(!new_file_box){
+			new_file_box=(struct file_box*)malloc(sizeof (struct file_box));
+			new_file_box->fd=newfd;
+			list_push_back(&thread_current()->file_list, &new_file_box->file_elem);
+		}
+		else if(new_file_box->type==FILE)file_close(new_file_box->file);
+
+		if(old_file_box->type==FILE){
+			new_file_box->file=old_file_box->file;
+			new_file_box->file->inode->open_cnt++;
+			//file_reopen(new_file_box->file);
+			//new_file_box->file->inode->deny_write_cnt++;
+		}
+		new_file_box->type=old_file_box->type;
+
+		ret=newfd;
+	}
+
+	lock_release(&file_lock);
+
+	return ret;
+}
+
 void
 syscall_init (void) {
 	write_msr(MSR_STAR, ((uint64_t)SEL_UCSEG - 0x10) << 48  |
@@ -292,7 +331,7 @@ syscall_handler (struct intr_frame *f) {
 	uint64_t syscall_number = f->R.rax;
 	uint64_t rdi=f->R.rdi, rsi=f->R.rsi, rdx=f->R.rdx;
 	int pid;
-	//printf ("(syscall_handler) syscall_number : %d, thread : %d\n", syscall_number, thread_current()->tid);
+	printf ("(syscall_handler) syscall_number : %d, thread : %d\n", syscall_number, thread_current()->tid);
 	switch (syscall_number){
 	case SYS_HALT:
 		halt();
@@ -335,6 +374,10 @@ syscall_handler (struct intr_frame *f) {
 		break;			
 	case SYS_CLOSE:
 		close(rdi);
+		break;
+	case SYS_DUP2:
+		printf("dup2????\n");
+		f->R.rax = dup2(rdi, rsi);
 		break;	
 	}
 	// wooyechan end

@@ -284,19 +284,12 @@ process_exec (void *f_name) {
 	bool success;
 
 	//wooyechan
-	//printf ("(process_exec) process %s excuted\n", file_name);
 	//save tokens in argument list
     for (char *token = strtok_r(f_name, " ", &save_ptr); token != NULL; token = strtok_r(NULL, " ", &save_ptr)) {
         argv[argc] = token;
         argc++;
     }
     argv[argc] = NULL;
-	
-	//printf("Arguments parsed, argc = %d\n", argc);
-    //for (int i = 0; i < argc; i++) {
-    //    printf("argv[%d] = %s\n", i, argv[i]);
-    //}
-	
 
 	/* We cannot use the intr_frame in the thread structure.
 	 * This is because when current thread rescheduled,
@@ -414,7 +407,6 @@ process_wait (tid_t child_tid) {
 	status = child->exit;
 	sema_up(&child->cleanup_sema);
 
-	//mhy908
 	return status;
 }
 
@@ -437,7 +429,11 @@ process_exit (void) {
 	while(!list_empty(&t->file_list)){
 		struct list_elem *elem=list_pop_front(&t->file_list);
 		struct file_box *file_box=list_entry(elem, struct file_box, file_elem);
-		if(file_box->type==FILE)file_close(file_box->file);
+		printf("file name = %d\n", file_box->file);
+		if(file_box->type==FILE){
+			file_close(file_box->file);
+			//printf("")
+		}
 		free(file_box);
 	}
 
