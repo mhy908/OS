@@ -132,6 +132,10 @@ struct thread {
 	int fd_index;
 	struct list file_list;
 	
+	// wooyechan
+	bool wait_on_exit;
+	struct semaphore fork_sema;
+	
 #endif
 #ifdef VM
 	/* Table for whole virtual memory owned by thread. */

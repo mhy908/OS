@@ -3,6 +3,20 @@
 
 #include "threads/thread.h"
 
+//wooyechan
+// to allow two argument at once
+struct fork_arg {
+    struct thread * parent;
+    struct intr_frame if_;
+    struct semaphore fork_sema;
+};
+
+struct init_arg {
+    struct thread * parent;
+    char * file_name;
+    struct semaphore sema;
+};
+
 tid_t process_create_initd (const char *file_name);
 tid_t process_fork (const char *name, struct intr_frame *if_);
 int process_exec (void *f_name);

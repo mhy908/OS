@@ -96,6 +96,7 @@ void error_exit(){
     printf("%s: exit(%d)\n", name, -1);
 	thread_exit();
 }
+
 struct file_box* get_filebox(int fd){
 	struct list *file_list=&thread_current()->file_list;
 	struct list_elem *e;
@@ -118,8 +119,16 @@ void exit(int status) {
 	thread_exit();
 }
 
-tid_t fork (const char *thread_name) {
-	
+tid_t fork (const char * name, struct intr_frame *f) {
+	// wooyechan
+	if (!validate_string (name))
+		error_exit ();
+
+	lock_acquire(&file_lock);
+	tid_t tid = process_fork (name, f);
+	lock_release(&file_lock);
+
+	return tid;
 }
 
 int exec (const char *file) {
@@ -127,7 +136,7 @@ int exec (const char *file) {
 }
 
 int wait (int pid) {
-	return 0;
+	process_wait(pid);
 }
 
 bool create (const char *file, unsigned initial_size) {
@@ -213,9 +222,10 @@ int write (int fd, void *buffer, unsigned length) {
 	int ret=-1;
 	if(!validate_pointer(buffer, length, false))error_exit();
 	lock_acquire(&file_lock);
-	
+	//printf ("(write) write at %d\n", fd);
 	struct file_box *file_box=get_filebox(fd);
 	if(file_box){
+		//printf ("(write) good fd");
 		switch(file_box->type){
 			case STDOUT:
 				putbuf(buffer, length);
@@ -300,7 +310,7 @@ syscall_handler (struct intr_frame *f) {
 	uint64_t syscall_number = f->R.rax;
 	uint64_t rdi=f->R.rdi, rsi=f->R.rsi, rdx=f->R.rdx;
 	int pid;
-	//printf ("syscall_number : %d\n", syscall_number);
+	printf ("(syscall_handler) syscall_number : %d, thread : %d\n", syscall_number, thread_current()->tid);
 	switch (syscall_number){
 	case SYS_HALT:
 		halt();
@@ -309,7 +319,7 @@ syscall_handler (struct intr_frame *f) {
 		exit(rdi);
 		break;	
 	case SYS_FORK:
-		f->R.rax = fork(rdi);
+		f->R.rax = fork(rdi, f);
 		break;			
 	case SYS_EXEC:
 		f->R.rax = exec(rdi);
