@@ -37,9 +37,8 @@ void syscall_handler (struct intr_frame *);
 #define MSR_LSTAR 0xc0000082        /* Long mode SYSCALL target */
 #define MSR_SYSCALL_MASK 0xc0000084 /* Mask for the eflags */
 
-//mhy908 - lock for filesystem & paging system
+//mhy908 - lock for filesystem
 struct lock file_lock;
-struct lock page_lock;
 
 //mhy908 - validation mechanism
 bool validate_pointer(void *p, size_t size, bool writable){
@@ -48,8 +47,6 @@ bool validate_pointer(void *p, size_t size, bool writable){
 	void *ptr1=pg_round_down(p);
 	void *ptr2=pg_round_down(p+size);
 	bool ret=true;
-
-	lock_acquire(&page_lock);
 	for(; ptr1<=ptr2; ptr1+=PGSIZE){
 		uint64_t *pte=pml4e_walk(th->pml4, (uint64_t)ptr1, 0);
 		if(pte==NULL||is_kern_pte(pte)||(writable&&!is_writable(pte))){
@@ -57,7 +54,6 @@ bool validate_pointer(void *p, size_t size, bool writable){
 			break;
 		}
 	}
-	lock_release(&page_lock);
 	return ret;
 }
 bool validate_string(void *p){
@@ -66,8 +62,6 @@ bool validate_string(void *p){
 	void *ptr=NULL;
 	uint64_t *pte=NULL;
 	bool ret=true;
-	
-	lock_acquire(&page_lock);
 	for(char *i=p; ; i++){
 		if(ptr!=pg_round_down(i)){
 			ptr=pg_round_down(i);
@@ -79,7 +73,6 @@ bool validate_string(void *p){
 		}
 		if(*i==0)break;
 	}
-	lock_release(&page_lock);
 	return ret;
 }
 void error_exit(){
@@ -108,7 +101,7 @@ void exit(int status) {
 	thread_exit();
 }
 
-tid_t fork (const char * name, struct intr_frame *f) {
+tid_t fork (const char *name, struct intr_frame *f) {
 	// wooyechan
 	if (!validate_string(name))error_exit ();
 
@@ -279,7 +272,6 @@ syscall_init (void) {
 
 	//mhy908
 	lock_init(&file_lock);
-	lock_init(&page_lock);
 }
 
 /* The main system call interface */

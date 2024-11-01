@@ -134,7 +134,10 @@ process_fork (const char *name, struct intr_frame *if_) {
 
 	tid_t tid = thread_create (name, curr->priority, __do_fork, fork_arg);
 
-	if (tid != NULL) sema_down(&fork_arg->fork_sema);
+	if (tid != TID_ERROR) sema_down(&fork_arg->fork_sema);
+	if(!fork_arg->succ) tid=TID_ERROR;
+
+	free(fork_arg);
 
 	//printf ("(process_fork) thread %d fork done, new tid : %d\n", curr->tid, tid);
 
@@ -183,13 +186,16 @@ duplicate_pte (uint64_t *pte, void *va, void *aux) {
  *       That is, you are required to pass second argument of process_fork to
  *       this function. */
 static void
-__do_fork (void *aux) {
+__do_fork (void *_aux) {
+
+	struct fork_arg *aux=(struct fork_arg *)_aux;
+
 	struct intr_frame if_;
 	struct thread *parent = ((struct fork_arg *)aux) -> parent;
 	struct thread *current = thread_current ();
 	/* TODO: somehow pass the parent_if. (i.e. process_fork()'s if_) */
 	struct intr_frame *parent_if = &((struct fork_arg *)aux) -> if_;
-	bool succ = false;
+	aux->succ = false;
 
 	/* 1. Read the cpu context to local stack. */
 	memcpy (&if_, parent_if, sizeof (struct intr_frame));
@@ -234,22 +240,25 @@ __do_fork (void *aux) {
             goto error;
         }
 
-		*new_file_box = *file_box;
-
 		if(file_box->type==FILE){
 			struct file * new_file = file_duplicate(file_box->file);
+			new_file_box->type=FILE;
        	 	new_file_box->file = new_file;
+			new_file_box->fd=file_box->fd;
+		}
+		else{
+			new_file_box->type=file_box->type;
 			new_file_box->fd=file_box->fd;
 		}
 		list_push_back(&current->file_list, &new_file_box->file_elem);
         e = list_next(e);
     }
 	
-	succ= true;
+	aux->succ= true;
 	/* Finally, switch to the newly created process. */
 error:
-	current -> wait_on_exit = succ;
-	if (succ) {
+	current -> wait_on_exit = aux->succ;
+	if (aux->succ) {
 		process_init ();
 		lock_acquire (&parent->child_lock);
 		list_push_back (&parent->children, &current->child_elem);
@@ -257,7 +266,7 @@ error:
 	}
 	sema_up (&((struct fork_arg *)aux) -> fork_sema);
 	//printf ("sema up done parent should be woke up.\n");
-	if (succ) {
+	if (aux->succ) {
 		do_iret (&if_);
 	}
 	thread_exit ();
@@ -348,9 +357,9 @@ process_exec (void *f_name) {
     printf("Registers setup: RDI = %d, RSI = %p\n", _if.R.rdi, (void *)_if.R.rsi);
 	*/
 	/* Start switched process. */
-	do_iret (&_if);
-	
 	palloc_free_page (argv[0]);
+	
+	do_iret (&_if);
 
 	NOT_REACHED ();
 }
@@ -428,17 +437,15 @@ process_exit (void) {
 	while(!list_empty(&t->file_list)){
 		struct list_elem *elem=list_pop_front(&t->file_list);
 		struct file_box *file_box=list_entry(elem, struct file_box, file_elem);
-		if(file_box->type==FILE){
-         	file_close(file_box->file);
-      	}
+		if(file_box->type==FILE)file_close(file_box->file);
 		free(file_box);
 	}
 
 	// wooyechan
 	// free of all alloc, file_box. children
 	struct list_elem *e;
-	while (!list_empty (&thread_current ()->children)) {
-		e = list_pop_front (&thread_current ()->children);
+	while (!list_empty (&t->children)) {
+		e = list_pop_front (&t->children);
 		struct thread *th = list_entry (e, struct thread, child_elem);
 		th->wait_on_exit = false;
 		sema_up (&th->cleanup_sema);

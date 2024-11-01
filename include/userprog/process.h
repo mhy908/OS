@@ -6,9 +6,10 @@
 //wooyechan
 // to allow two argument at once
 struct fork_arg {
-    struct thread * parent;
+    struct thread *parent;
     struct intr_frame if_;
     struct semaphore fork_sema;
+    bool succ;
 };
 
 struct init_arg {
