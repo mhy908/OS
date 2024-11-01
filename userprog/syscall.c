@@ -41,13 +41,6 @@ void syscall_handler (struct intr_frame *);
 struct lock file_lock;
 struct lock page_lock;
 
-//wooyechan
-char *get_first_word (char *name) {
-	char * token, save;
-	token = strtok_r(name, " ", &save);
-	return token;
-}
-
 //mhy908 - validation mechanism
 bool validate_pointer(void *p, size_t size, bool writable){
 	if(p==NULL||!is_user_vaddr(p))return false;
@@ -92,8 +85,6 @@ bool validate_string(void *p){
 void error_exit(){
 	struct thread * curr = thread_current();
 	curr -> exit = -1;
-	char * name = get_first_word (curr -> name);
-    printf("%s: exit(%d)\n", name, -1);
 	thread_exit();
 }
 
@@ -114,8 +105,6 @@ void halt() {
 void exit(int status) {
 	struct thread * curr = thread_current();
 	curr -> exit = status;
-	char * name = get_first_word (curr -> name);
-    printf("%s: exit(%d)\n", name, status);
 	thread_exit();
 }
 
@@ -132,7 +121,14 @@ tid_t fork (const char * name, struct intr_frame *f) {
 }
 
 int exec (const char *file) {
-	
+	if(!validate_string(file))error_exit();
+
+	char *file_copy=palloc_get_page(0);
+	if(!file_copy)error_exit();
+	strlcpy(file_copy, file, PGSIZE);
+	process_exec(file_copy);
+	NOT_REACHED();
+	return -1;
 }
 
 int wait (int pid) {
