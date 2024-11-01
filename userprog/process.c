@@ -9,7 +9,8 @@
 #include "userprog/tss.h"
 #include "filesys/directory.h"
 #include "filesys/file.h"
-#include "filesys/filesys.h"
+#include "filesys/filesys.h" 
+#include "filesys/inode.h"
 #include "threads/flags.h"
 #include "threads/init.h"
 #include "threads/interrupt.h"
@@ -241,9 +242,12 @@ __do_fork (void *_aux) {
         }
 
 		if(file_box->type==FILE){
-			struct file * new_file = file_duplicate(file_box->file);
+			struct file * new_file = file_duplicate(file_box->file_ref->file);
 			new_file_box->type=FILE;
-       	 	new_file_box->file = new_file;
+			struct file_ref *new_file_ref=(struct file_ref*)malloc(sizeof(struct file_ref));
+			new_file_ref->file=new_file;
+			new_file_ref->ref_cnt=1;
+       	 	new_file_box->file_ref = new_file_ref;
 			new_file_box->fd=file_box->fd;
 		}
 		else{
@@ -429,9 +433,13 @@ process_exit (void) {
 	while(!list_empty(&t->file_list)){
 		struct list_elem *elem=list_pop_front(&t->file_list);
 		struct file_box *file_box=list_entry(elem, struct file_box, file_elem);
-		printf("file name = %d\n", file_box->file);
+		//printf("file name = %d\n", file_box->file);
 		if(file_box->type==FILE){
-			file_close(file_box->file);
+			//printf("inode_deny_write = %d, open_cnt = %d\n", file_box->file->inode->deny_write_cnt, file_box->file->inode->open_cnt);
+			if(--file_box->file_ref->ref_cnt==0){
+				file_close(file_box->file_ref->file);
+				free(file_box->file_ref);
+			}
 			//printf("")
 		}
 		free(file_box);
