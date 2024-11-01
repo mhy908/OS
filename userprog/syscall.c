@@ -87,6 +87,7 @@ void error_exit(){
 	curr -> exit = -1;
 	thread_exit();
 }
+
 struct file_box* get_filebox(int fd){
 	struct list *file_list=&thread_current()->file_list;
 	struct list_elem *e;
@@ -107,8 +108,16 @@ void exit(int status) {
 	thread_exit();
 }
 
-tid_t fork (const char *thread_name) {
-	
+tid_t fork (const char * name, struct intr_frame *f) {
+	// wooyechan
+	if (!validate_string (name))
+		error_exit ();
+
+	lock_acquire(&file_lock);
+	tid_t tid = process_fork (name, f);
+	lock_release(&file_lock);
+
+	return tid;
 }
 
 int exec (const char *file) {
@@ -123,7 +132,7 @@ int exec (const char *file) {
 }
 
 int wait (int pid) {
-	return 0;
+	process_wait(pid);
 }
 
 bool create (const char *file, unsigned initial_size) {
@@ -160,13 +169,10 @@ int open (const char *file_name) {
 	struct file *file=filesys_open(file_name);
 	if(file){
 		struct file_box *file_box=malloc(sizeof(struct file_box));
-		struct file_container *file_container=malloc(sizeof(struct file_container));
-		
-		file_container->file=file;
-		file_container->cnt=1;
+				
 		file_box->fd=t->fd_index++;
 		ret=file_box->fd;
-		file_box->file_container=file_container;
+		file_box->file=file;
 		file_box->type=FILE;
 		list_push_back(&t->file_list, &file_box->file_elem);
 	}
@@ -183,7 +189,7 @@ int filesize (int fd){
 	lock_acquire(&file_lock);
 
 	struct file_box *file_box=get_filebox(fd);
-	if(file_box)ret=file_length(file_box->file_container->file);
+	if(file_box)ret=file_length(file_box->file);
 
 	lock_release(&file_lock);
 	return ret;
@@ -202,7 +208,7 @@ int read (int fd, void *buffer, unsigned length) {
 				for(unsigned i=0; i<length; i++)buf[i]=input_getc();
 				break;
 			case FILE:
-				ret=file_read(file_box->file_container->file, buffer, length);
+				ret=file_read(file_box->file, buffer, length);
 				break;
 		}
 	}
@@ -215,15 +221,16 @@ int write (int fd, void *buffer, unsigned length) {
 	int ret=-1;
 	if(!validate_pointer(buffer, length, false))error_exit();
 	lock_acquire(&file_lock);
-	
+	//printf ("(write) write at %d\n", fd);
 	struct file_box *file_box=get_filebox(fd);
 	if(file_box){
+		//printf ("(write) good fd");
 		switch(file_box->type){
 			case STDOUT:
 				putbuf(buffer, length);
 				break;
 			case FILE:
-				ret=file_write(file_box->file_container->file, buffer, length);
+				ret=file_write(file_box->file, buffer, length);
 				break;
 		}
 	}
@@ -236,7 +243,7 @@ void seek (int fd, unsigned position) {
 	lock_acquire(&file_lock);
 	struct file_box* file_box=get_filebox(fd);
 	if(file_box&&file_box->type==FILE){
-		file_seek(file_box->file_container->file, position);
+		file_seek(file_box->file, position);
 	}
 	lock_release(&file_lock);
 }
@@ -246,7 +253,7 @@ int tell (int fd) {
 	lock_acquire(&file_lock);
 	struct file_box* file_box=get_filebox(fd);
 	if(file_box&&file_box->type==FILE){
-		ret=file_tell(file_box->file_container->file);
+		ret=file_tell(file_box->file);
 	}
 	lock_release(&file_lock);
 	return ret;
@@ -258,10 +265,7 @@ void close (int fd) {
 	if(file_box){
 		list_remove(&(file_box->file_elem));
 		if(file_box->type==FILE){
-			if(--file_box->file_container->cnt==0){
-				file_close(file_box->file_container->file);
-				free(file_box->file_container);
-			}
+			file_close(file_box->file);
 		}
 		free(file_box);
 	}
@@ -302,7 +306,7 @@ syscall_handler (struct intr_frame *f) {
 	uint64_t syscall_number = f->R.rax;
 	uint64_t rdi=f->R.rdi, rsi=f->R.rsi, rdx=f->R.rdx;
 	int pid;
-	//printf ("syscall_number : %d\n", syscall_number);
+	//printf ("(syscall_handler) syscall_number : %d, thread : %d\n", syscall_number, thread_current()->tid);
 	switch (syscall_number){
 	case SYS_HALT:
 		halt();
@@ -311,7 +315,7 @@ syscall_handler (struct intr_frame *f) {
 		exit(rdi);
 		break;	
 	case SYS_FORK:
-		f->R.rax = fork(rdi);
+		f->R.rax = fork(rdi, f);
 		break;			
 	case SYS_EXEC:
 		f->R.rax = exec(rdi);
