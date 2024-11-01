@@ -110,11 +110,12 @@ void exit(int status) {
 
 tid_t fork (const char * name, struct intr_frame *f) {
 	// wooyechan
-	if (!validate_string (name))
-		error_exit ();
+	if (!validate_string(name))error_exit ();
 
 	lock_acquire(&file_lock);
+
 	tid_t tid = process_fork (name, f);
+
 	lock_release(&file_lock);
 
 	return tid;
@@ -136,25 +137,21 @@ int wait (int pid) {
 }
 
 bool create (const char *file, unsigned initial_size) {
-	/* MUST CHECK validity of file */
 	if(!validate_string(file)||!strcmp(file, ""))error_exit();
-
-	printf("FILE NAME = %s\n", file);
-
 	lock_acquire(&file_lock);
-	printf("DID LOCK ACQUIRE\n");
+
 	bool ret=filesys_create(file, initial_size);
-	printf("DID CREATE\n");
+
 	lock_release(&file_lock);
-	printf("DID LOCK RELEASE\n");
 	return ret;
 }
 
 bool remove (const char *file) {
-	/* MUST CHECK validity of file */
 	if(!validate_string(file))error_exit();
 	lock_acquire(&file_lock);
+
 	bool ret=filesys_remove(file);
+
 	lock_release(&file_lock);
 	return ret;
 }
@@ -169,15 +166,11 @@ int open (const char *file_name) {
 	struct file *file=filesys_open(file_name);
 	if(file){
 		struct file_box *file_box=malloc(sizeof(struct file_box));
-				
 		file_box->fd=t->fd_index++;
 		ret=file_box->fd;
 		file_box->file=file;
 		file_box->type=FILE;
 		list_push_back(&t->file_list, &file_box->file_elem);
-	}
-	else{
-		file_close(file);
 	}
 
 	lock_release(&file_lock);
@@ -196,6 +189,7 @@ int filesize (int fd){
 }
 
 int read (int fd, void *buffer, unsigned length) {
+
 	int ret=-1;
 	if(!validate_pointer(buffer, length, true))error_exit();
 	lock_acquire(&file_lock);
@@ -221,10 +215,9 @@ int write (int fd, void *buffer, unsigned length) {
 	int ret=-1;
 	if(!validate_pointer(buffer, length, false))error_exit();
 	lock_acquire(&file_lock);
-	//printf ("(write) write at %d\n", fd);
+
 	struct file_box *file_box=get_filebox(fd);
 	if(file_box){
-		//printf ("(write) good fd");
 		switch(file_box->type){
 			case STDOUT:
 				putbuf(buffer, length);
@@ -303,6 +296,7 @@ syscall_handler (struct intr_frame *f) {
 	the RAX register. System calls that return a value can do so by modifying
 	the rax member of struct intr_frame
 	*/
+
 	uint64_t syscall_number = f->R.rax;
 	uint64_t rdi=f->R.rdi, rsi=f->R.rsi, rdx=f->R.rdx;
 	int pid;

@@ -85,7 +85,7 @@ kill (struct intr_frame *f) {
 			   expected.  Kill the user process.  */
 			printf ("%s: dying due to interrupt %#04llx (%s).\n",
 					thread_name (), f->vec_no, intr_name (f->vec_no));
-			intr_dump_frame (f);
+			//intr_dump_frame (f);
 			thread_exit ();
 
 		case SEL_KCSEG:
@@ -93,7 +93,7 @@ kill (struct intr_frame *f) {
 			   Kernel code shouldn't throw exceptions.  (Page faults
 			   may cause kernel exceptions--but they shouldn't arrive
 			   here.)  Panic the kernel to make the point.  */
-			intr_dump_frame (f);
+			//intr_dump_frame (f);
 			PANIC ("Kernel bug - unexpected interrupt in kernel");
 
 		default:

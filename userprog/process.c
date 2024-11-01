@@ -118,9 +118,9 @@ tid_t
 process_fork (const char *name, struct intr_frame *if_) {
 	/* Clone current thread to new thread.*/
 	//wooyechan
-	struct thread * curr = thread_current();
-	struct fork_arg * fork_arg;
-	fork_arg = malloc (sizeof (struct fork_arg));
+	struct thread *curr = thread_current();
+	struct fork_arg *fork_arg;
+	fork_arg=(struct fork_arg *)malloc (sizeof (struct fork_arg));
 	
 	if (!fork_arg) {
 		//printf ("allocate error for fork_arg %s", name);
@@ -236,17 +236,12 @@ __do_fork (void *aux) {
 
 		*new_file_box = *file_box;
 
-		printf ("(__do_fork) %d %d\n", file_box->file, file_box->fd);
-		struct file * new_file = file_duplicate(file_box->file);
-        new_file_box->file = file_duplicate(file_box->file);
-
-        // Set up new file_box
-        new_file_box->type = file_box->type;
-        new_file_box->fd = file_box->fd;
-
-        // Add new file_box to current file list
-        list_push_back(&current->file_list, &new_file_box->file_elem);
-
+		if(file_box->type==FILE){
+			struct file * new_file = file_duplicate(file_box->file);
+       	 	new_file_box->file = new_file;
+			new_file_box->fd=file_box->fd;
+		}
+		list_push_back(&current->file_list, &new_file_box->file_elem);
         e = list_next(e);
     }
 	
@@ -314,7 +309,8 @@ process_exec (void *f_name) {
 	if (!success) {
 		// for safety?
 		palloc_free_page (argv[0]);
-		return -1;
+		thread_current()->exit=-1;
+		thread_exit();
 	}
 	
 	//wooyechan
@@ -433,11 +429,8 @@ process_exit (void) {
 		struct list_elem *elem=list_pop_front(&t->file_list);
 		struct file_box *file_box=list_entry(elem, struct file_box, file_elem);
 		if(file_box->type==FILE){
-			if(--file_box->file_container->cnt==0){
-				file_close(file_box->file_container->file);
-				free(file_box->file_container);
-			}
-		}
+         	file_close(file_box->file);
+      	}
 		free(file_box);
 	}
 
@@ -452,12 +445,12 @@ process_exit (void) {
 	}
 	process_cleanup ();
 
-	if (curr -> executable) file_close(curr -> executable);
+	if (t->executable)file_close(t->executable);
 
-	if (curr -> wait_on_exit) {
-	  //printf ("%s: exit(%d)\n", curr->name, curr->exit);
-	  sema_up (&curr->wait_sema);
-	  sema_down (&curr->cleanup_sema);
+	if (t->wait_on_exit) {
+	  	printf ("%s: exit(%d)\n", get_first_word(t->name), t->exit);
+	  	sema_up (&t->wait_sema);
+	  	sema_down (&t->cleanup_sema);
 	}
 }
 
