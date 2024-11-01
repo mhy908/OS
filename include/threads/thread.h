@@ -132,6 +132,10 @@ struct thread {
 	int fd_index;
 	struct list file_list;
 	
+	// wooyechan
+	bool wait_on_exit;
+	struct semaphore fork_sema;
+	
 #endif
 #ifdef VM
 	/* Table for whole virtual memory owned by thread. */
@@ -143,13 +147,9 @@ struct thread {
 	unsigned magic;                     /* Detects stack overflow. */
 };
 
-struct file_container{
-	struct file *file;
-	int cnt;
-};
 struct file_box{
 	enum{STDIN, STDOUT, FILE} type;
-	struct file_container *file_container;
+	struct file *file;
 	int fd;
 	struct list_elem file_elem;
 };
