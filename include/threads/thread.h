@@ -147,13 +147,9 @@ struct thread {
 	unsigned magic;                     /* Detects stack overflow. */
 };
 
-struct file_container{
-	struct file *file;
-	int cnt;
-};
 struct file_box{
 	enum{STDIN, STDOUT, FILE} type;
-	struct file_container *file_container;
+	struct file *file;
 	int fd;
 	struct list_elem file_elem;
 };

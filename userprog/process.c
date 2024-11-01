@@ -61,10 +61,10 @@ process_create_initd (const char *file_name) {
 	init_arg->parent = thread_current();
 	sema_init(&init_arg->sema, 0);
 
-	printf ("(process_create_initd) thread %s create begin\n", file_name);
+	//printf ("(process_create_initd) thread %s create begin\n", file_name);
 	/* Create a new thread to execute FILE_NAME. */
 	tid = thread_create (file_name, PRI_DEFAULT, initd, init_arg);
-	printf ("(process_create_initd) thread %s created with tid %d\n", file_name, tid);
+	//printf ("(process_create_initd) thread %s created with tid %d\n", file_name, tid);
 
 	if (tid == TID_ERROR) palloc_free_page (fn_copy);
 	else sema_down(&init_arg->sema);
@@ -101,7 +101,7 @@ initd (void *init_arg) {
 	process_init ();
 
 	lock_acquire (&parent->child_lock);
-	printf ("(initd) %s pushed %s in children\n", parent->name, t->name);
+	//printf ("(initd) %s pushed %s in children\n", parent->name, t->name);
 	list_push_back(&parent->children, &t->child_elem);
 	lock_release (&parent->child_lock);
 
@@ -123,20 +123,20 @@ process_fork (const char *name, struct intr_frame *if_) {
 	fork_arg = malloc (sizeof (struct fork_arg));
 	
 	if (!fork_arg) {
-		printf ("allocate error for fork_arg %s", name);
+		//printf ("allocate error for fork_arg %s", name);
 		return TID_ERROR;
 	}
 	fork_arg->parent = curr;
 	memcpy (&fork_arg->if_, if_, sizeof(struct intr_frame));
 	sema_init (&fork_arg->fork_sema, 0);
 
-	printf ("(process_fork) thread %d fork with sema %d\n", curr->tid, &fork_arg->fork_sema);
+	//printf ("(process_fork) thread %d fork with sema %d\n", curr->tid, &fork_arg->fork_sema);
 
 	tid_t tid = thread_create (name, curr->priority, __do_fork, fork_arg);
 
 	if (tid != NULL) sema_down(&fork_arg->fork_sema);
 
-	printf ("(process_fork) thread %d fork done, new tid : %d\n", curr->tid, tid);
+	//printf ("(process_fork) thread %d fork done, new tid : %d\n", curr->tid, tid);
 
 	return tid;
 }
@@ -216,9 +216,9 @@ __do_fork (void *aux) {
 	 * TODO:       the resources of parent.*/
 
 	//wooyechan
-	printf ("(__do_fork) thread %d is running with sema %d, parent %d\n", current->tid , &((struct fork_arg *)aux) -> fork_sema, parent->tid);
+	//printf ("(__do_fork) thread %d is running with sema %d, parent %d\n", current->tid , &((struct fork_arg *)aux) -> fork_sema, parent->tid);
 	if_.R.rax = 0;
-	/*
+	
 	current -> fd_index = parent -> fd_index;
 
     struct list *file_list = &parent->file_list;
@@ -234,21 +234,14 @@ __do_fork (void *aux) {
             goto error;
         }
 
-        struct file_container *new_file_container = (struct file_container *)malloc(sizeof(struct file_container));
-        if (new_file_container == NULL) {
-            free(new_file_box);
-            goto error;
-        }
-
 		*new_file_box = *file_box;
 
-		printf ("(__do_fork) %d %d\n", file_box->file_container->file, file_box->fd);
-        new_file_container->file = file_duplicate(file_box->file_container->file);
-        new_file_container->cnt = 0;
+		printf ("(__do_fork) %d %d\n", file_box->file, file_box->fd);
+		struct file * new_file = file_duplicate(file_box->file);
+        new_file_box->file = file_duplicate(file_box->file);
 
         // Set up new file_box
         new_file_box->type = file_box->type;
-        new_file_box->file_container = new_file_container;
         new_file_box->fd = file_box->fd;
 
         // Add new file_box to current file list
@@ -256,7 +249,7 @@ __do_fork (void *aux) {
 
         e = list_next(e);
     }
-	*/
+	
 	succ= true;
 	/* Finally, switch to the newly created process. */
 error:
@@ -268,7 +261,7 @@ error:
 		lock_release (&parent->child_lock);
 	}
 	sema_up (&((struct fork_arg *)aux) -> fork_sema);
-	printf ("sema up done parent should be woke up.\n");
+	//printf ("sema up done parent should be woke up.\n");
 	if (succ) {
 		do_iret (&if_);
 	}
