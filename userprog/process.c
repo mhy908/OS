@@ -10,7 +10,6 @@
 #include "filesys/directory.h"
 #include "filesys/file.h"
 #include "filesys/filesys.h" 
-#include "filesys/inode.h"
 #include "threads/flags.h"
 #include "threads/init.h"
 #include "threads/interrupt.h"
@@ -62,10 +61,8 @@ process_create_initd (const char *file_name) {
 	init_arg->parent = thread_current();
 	sema_init(&init_arg->sema, 0);
 
-	//printf ("(process_create_initd) thread %s create begin\n", file_name);
 	/* Create a new thread to execute FILE_NAME. */
 	tid = thread_create (file_name, PRI_DEFAULT, initd, init_arg);
-	//printf ("(process_create_initd) thread %s created with tid %d\n", file_name, tid);
 
 	if (tid == TID_ERROR) palloc_free_page (fn_copy);
 	else sema_down(&init_arg->sema);
@@ -77,13 +74,13 @@ process_create_initd (const char *file_name) {
 
 /* A thread function that launches first user process. */
 static void
-initd (void *init_arg) {
+initd (void *init_arg_) {
 #ifdef VM
 	supplemental_page_table_init (&thread_current ()->spt);
 #endif
-
-	char * f_name = ((struct init_arg *)init_arg) -> file_name;
-	struct thread * parent = ((struct init_arg *)init_arg) -> parent;
+	struct init_arg *init_arg = (struct init_arg *)init_arg_;
+	char *f_name = init_arg -> file_name;
+	struct thread * parent = init_arg -> parent;
 
 	struct thread *t=thread_current();
 	struct file_box *file_box_stdin=malloc(sizeof(struct file_box));
@@ -102,11 +99,10 @@ initd (void *init_arg) {
 	process_init ();
 
 	lock_acquire (&parent->child_lock);
-	//printf ("(initd) %s pushed %s in children\n", parent->name, t->name);
 	list_push_back(&parent->children, &t->child_elem);
 	lock_release (&parent->child_lock);
 
-	sema_up(&((struct init_arg *)init_arg)->sema);
+	sema_up(&init_arg->sema);
 
 	if (process_exec (f_name) < 0)
 		PANIC("Fail to launch initd\n");
@@ -120,27 +116,23 @@ process_fork (const char *name, struct intr_frame *if_) {
 	/* Clone current thread to new thread.*/
 	//wooyechan
 	struct thread *curr = thread_current();
-	struct fork_arg *fork_arg;
-	fork_arg=(struct fork_arg *)malloc (sizeof (struct fork_arg));
+	struct fork_arg *fork_arg = (struct fork_arg *) malloc (sizeof (struct fork_arg));
+	int priority = curr->priority;
 	
-	if (!fork_arg) {
-		//printf ("allocate error for fork_arg %s", name);
-		return TID_ERROR;
-	}
+	if (!fork_arg) return TID_ERROR;
+
 	fork_arg->parent = curr;
 	memcpy (&fork_arg->if_, if_, sizeof(struct intr_frame));
 	sema_init (&fork_arg->fork_sema, 0);
+	fork_arg->succ = false;
 
-	//printf ("(process_fork) thread %d fork with sema %d\n", curr->tid, &fork_arg->fork_sema);
-
-	tid_t tid = thread_create (name, curr->priority, __do_fork, fork_arg);
+	tid_t tid = thread_create (name, priority, __do_fork, fork_arg);
 
 	if (tid != TID_ERROR) sema_down(&fork_arg->fork_sema);
+
 	if(!fork_arg->succ) tid=TID_ERROR;
 
 	free(fork_arg);
-
-	//printf ("(process_fork) thread %d fork done, new tid : %d\n", curr->tid, tid);
 
 	return tid;
 }
@@ -188,15 +180,12 @@ duplicate_pte (uint64_t *pte, void *va, void *aux) {
  *       this function. */
 static void
 __do_fork (void *_aux) {
-
 	struct fork_arg *aux=(struct fork_arg *)_aux;
-
 	struct intr_frame if_;
 	struct thread *parent = ((struct fork_arg *)aux) -> parent;
 	struct thread *current = thread_current ();
 	/* TODO: somehow pass the parent_if. (i.e. process_fork()'s if_) */
-	struct intr_frame *parent_if = &((struct fork_arg *)aux) -> if_;
-	aux->succ = false;
+	struct intr_frame *parent_if = &aux -> if_;
 
 	/* 1. Read the cpu context to local stack. */
 	memcpy (&if_, parent_if, sizeof (struct intr_frame));
@@ -225,7 +214,6 @@ __do_fork (void *_aux) {
 	//wooyechan
 	//printf ("(__do_fork) thread %d is running with sema %d, parent %d\n", current->tid , &((struct fork_arg *)aux) -> fork_sema, parent->tid);
 	if_.R.rax = 0;
-	
 	current -> fd_index = parent -> fd_index;
 
     struct list *file_list = &parent->file_list;
@@ -237,9 +225,7 @@ __do_fork (void *_aux) {
 
 		// Allocation
         struct file_box *new_file_box = (struct file_box *)malloc(sizeof(struct file_box));
-        if (new_file_box == NULL) {
-            goto error;
-        }
+        if (new_file_box == NULL) goto error;
 
 		if(file_box->type==FILE){
 			struct file * new_file = file_duplicate(file_box->file_ref->file);
@@ -257,22 +243,18 @@ __do_fork (void *_aux) {
 		list_push_back(&current->file_list, &new_file_box->file_elem);
         e = list_next(e);
     }
-	
+
+	process_init ();
+	lock_acquire (&parent->child_lock);
+	list_push_back (&parent->children, &current->child_elem);
+	lock_release (&parent->child_lock);
+
 	aux->succ= true;
 	/* Finally, switch to the newly created process. */
 error:
 	current -> wait_on_exit = aux->succ;
-	if (aux->succ) {
-		process_init ();
-		lock_acquire (&parent->child_lock);
-		list_push_back (&parent->children, &current->child_elem);
-		lock_release (&parent->child_lock);
-	}
-	sema_up (&((struct fork_arg *)aux) -> fork_sema);
-	//printf ("sema up done parent should be woke up.\n");
-	if (aux->succ) {
-		do_iret (&if_);
-	}
+	sema_up (&aux -> fork_sema);
+	if (aux->succ) do_iret (&if_);
 	thread_exit ();
 }
 
@@ -362,14 +344,11 @@ process_exec (void *f_name) {
 }
 
 struct thread* get_child(tid_t child_tid){
-
 	struct thread * curr = thread_current();
 
 	lock_acquire (&curr->child_lock);
 	struct list * children = &(curr->children);
-	struct list_elem *e = list_begin(children);\
-
-	//printf ("(get_child) currently size of children is %d.\n", list_size(children));
+	struct list_elem *e = list_begin(children);
 
 	while (e != list_end(children)) {
         struct thread *child = list_entry(e, struct thread, child_elem);
@@ -379,7 +358,6 @@ struct thread* get_child(tid_t child_tid){
 		}
         e = list_next(e);
     }
-
 	lock_release (&curr->child_lock);
 
     return NULL;
@@ -400,15 +378,12 @@ process_wait (tid_t child_tid) {
 	 * XXX:       to add infinite loop here before
 	 * XXX:       implementing the process_wait. */
 	// wooyechan
-	//printf ("(process_wait) %s wait %d\n", thread_current()->name, child_tid);
 	struct thread * child = get_child(child_tid);
-	int status = -1;
-	
-	if (child == NULL) return status;
+	if (child == NULL) return -1;
 
 	sema_down(&child->wait_sema);
 	list_remove(&child->child_elem);
-	status = child->exit;
+	int status = child->exit;
 	sema_up(&child->cleanup_sema);
 
 	return status;
@@ -419,6 +394,14 @@ char *get_first_word (char *name) {
 	char * token, save;
 	token = strtok_r(name, " ", &save);
 	return token;
+}
+
+void try_close (struct file_box *file_box) {
+	if (file_box->type != FILE) return;
+	if(--file_box->file_ref->ref_cnt==0){
+		file_close(file_box->file_ref->file);
+		free(file_box->file_ref);
+	}
 }
 
 /* Exit the process. This function is called by thread_exit (). */
@@ -433,30 +416,21 @@ process_exit (void) {
 	while(!list_empty(&t->file_list)){
 		struct list_elem *elem=list_pop_front(&t->file_list);
 		struct file_box *file_box=list_entry(elem, struct file_box, file_elem);
-		//printf("file name = %d\n", file_box->file);
-		if(file_box->type==FILE){
-			//printf("inode_deny_write = %d, open_cnt = %d\n", file_box->file->inode->deny_write_cnt, file_box->file->inode->open_cnt);
-			if(--file_box->file_ref->ref_cnt==0){
-				file_close(file_box->file_ref->file);
-				free(file_box->file_ref);
-			}
-			//printf("")
-		}
+		try_close (file_box);
 		free(file_box);
 	}
 
 	// wooyechan
-	// free of all alloc, file_box. children
-	struct list_elem *e;
 	while (!list_empty (&t->children)) {
-		e = list_pop_front (&t->children);
+		struct list_elem *e = list_pop_front (&t->children);
 		struct thread *th = list_entry (e, struct thread, child_elem);
 		th->wait_on_exit = false;
 		sema_up (&th->cleanup_sema);
 	}
+
 	process_cleanup ();
 
-	if (t->executable)file_close(t->executable);
+	file_close(t->executable);
 
 	if (t->wait_on_exit) {
 	  	printf ("%s: exit(%d)\n", get_first_word(t->name), t->exit);
