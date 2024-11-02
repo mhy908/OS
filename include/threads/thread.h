@@ -146,10 +146,14 @@ struct thread {
 	struct intr_frame tf;               /* Information for switching */
 	unsigned magic;                     /* Detects stack overflow. */
 };
-
+struct file_ref{
+	struct file *file;
+	int ref_cnt;
+};
 struct file_box{
 	enum{STDIN, STDOUT, FILE} type;
-	struct file *file;
+	struct file_ref *file_ref;
+	char* file_name;
 	int fd;
 	struct list_elem file_elem;
 };

@@ -162,7 +162,10 @@ int open (const char *file_name) {
 		struct file_box *file_box=malloc(sizeof(struct file_box));
 		file_box->fd=t->fd_index++;
 		ret=file_box->fd;
-		file_box->file=file;
+		struct file_ref *file_ref=malloc(sizeof(struct file_ref));
+		file_ref->file=file;
+		file_ref->ref_cnt=1;
+		file_box->file_ref=file_ref;
 		file_box->type=FILE;
 		list_push_back(&t->file_list, &file_box->file_elem);
 	}
@@ -176,7 +179,7 @@ int filesize (int fd){
 	lock_acquire(&file_lock);
 
 	struct file_box *file_box=get_filebox(fd);
-	if(file_box)ret=file_length(file_box->file);
+	if(file_box)ret=file_length(file_box->file_ref->file);
 
 	lock_release(&file_lock);
 	return ret;
@@ -196,7 +199,7 @@ int read (int fd, void *buffer, unsigned length) {
 				for(unsigned i=0; i<length; i++)buf[i]=input_getc();
 				break;
 			case FILE:
-				ret=file_read(file_box->file, buffer, length);
+				ret=file_read(file_box->file_ref->file, buffer, length);
 				break;
 		}
 	}
@@ -217,7 +220,7 @@ int write (int fd, void *buffer, unsigned length) {
 				putbuf(buffer, length);
 				break;
 			case FILE:
-				ret=file_write(file_box->file, buffer, length);
+				ret=file_write(file_box->file_ref->file, buffer, length);
 				break;
 		}
 	}
@@ -230,7 +233,7 @@ void seek (int fd, unsigned position) {
 	lock_acquire(&file_lock);
 	struct file_box* file_box=get_filebox(fd);
 	if(file_box&&file_box->type==FILE){
-		file_seek(file_box->file, position);
+		file_seek(file_box->file_ref->file, position);
 	}
 	lock_release(&file_lock);
 }
@@ -240,7 +243,7 @@ int tell (int fd) {
 	lock_acquire(&file_lock);
 	struct file_box* file_box=get_filebox(fd);
 	if(file_box&&file_box->type==FILE){
-		ret=file_tell(file_box->file);
+		ret=file_tell(file_box->file_ref->file);
 	}
 	lock_release(&file_lock);
 	return ret;
@@ -252,7 +255,10 @@ void close (int fd) {
 	if(file_box){
 		list_remove(&(file_box->file_elem));
 		if(file_box->type==FILE){
-			file_close(file_box->file);
+			if(--file_box->file_ref->ref_cnt==0){
+				file_close(file_box->file_ref->file);
+				free(file_box->file_ref);
+			}
 		}
 		free(file_box);
 	}
@@ -274,24 +280,26 @@ int dup2(int oldfd, int newfd){
 		ret=oldfd;
 	}
 	else{
-		if(!new_file_box){
-			new_file_box=(struct file_box*)malloc(sizeof (struct file_box));
-			new_file_box->fd=newfd;
-			list_push_back(&thread_current()->file_list, &new_file_box->file_elem);
+		if(new_file_box){
+			if(new_file_box->type==FILE){
+				if(--new_file_box->file_ref->ref_cnt==0){
+					file_close(new_file_box->file_ref->file);
+					free(new_file_box->file_ref);
+				}
+			}
+			list_remove(&new_file_box->file_elem);
+			free(new_file_box);
 		}
-		else if(new_file_box->type==FILE)file_close(new_file_box->file);
-
-		if(old_file_box->type==FILE){
-			new_file_box->file=old_file_box->file;
-			new_file_box->file->inode->open_cnt++;
-			//file_reopen(new_file_box->file);
-			//new_file_box->file->inode->deny_write_cnt++;
-		}
+		new_file_box=(struct file_box*)malloc(sizeof(struct file_box));
+		new_file_box->fd=newfd;
 		new_file_box->type=old_file_box->type;
-
+		if(new_file_box->type==FILE){
+			new_file_box->file_ref=old_file_box->file_ref;
+			new_file_box->file_ref->ref_cnt++;
+		}
+		list_push_back(&thread_current()->file_list, &new_file_box->file_elem);
 		ret=newfd;
 	}
-
 	lock_release(&file_lock);
 
 	return ret;
@@ -331,7 +339,7 @@ syscall_handler (struct intr_frame *f) {
 	uint64_t syscall_number = f->R.rax;
 	uint64_t rdi=f->R.rdi, rsi=f->R.rsi, rdx=f->R.rdx;
 	int pid;
-	printf ("(syscall_handler) syscall_number : %d, thread : %d\n", syscall_number, thread_current()->tid);
+	//printf ("BEFORE (syscall_handler) syscall_number : %d, thread : %d, opened_file : %d\n", syscall_number, thread_current()->tid, list_size(&thread_current()->file_list));
 	switch (syscall_number){
 	case SYS_HALT:
 		halt();
@@ -376,9 +384,9 @@ syscall_handler (struct intr_frame *f) {
 		close(rdi);
 		break;
 	case SYS_DUP2:
-		printf("dup2????\n");
 		f->R.rax = dup2(rdi, rsi);
 		break;	
 	}
+	//printf ("AFTER (syscall_handler) syscall_number : %d, thread : %d, opened_file : %d\n", syscall_number, thread_current()->tid, list_size(&thread_current()->file_list));
 	// wooyechan end
 }
