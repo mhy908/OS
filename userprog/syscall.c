@@ -76,11 +76,6 @@ bool validate_string(void *p){
 	}
 	return ret;
 }
-void error_exit(){
-	struct thread * curr = thread_current();
-	curr -> exit = -1;
-	thread_exit();
-}
 
 struct file_box* get_filebox(int fd){
 	struct list *file_list=&thread_current()->file_list;
@@ -104,7 +99,7 @@ void exit(int status) {
 
 tid_t fork (const char *name, struct intr_frame *f) {
 	// wooyechan
-	if (!validate_string(name))error_exit ();
+	if (!validate_string(name))exit(-1);
 
 	lock_acquire(&file_lock);
 
@@ -116,10 +111,10 @@ tid_t fork (const char *name, struct intr_frame *f) {
 }
 
 int exec (const char *file) {
-	if(!validate_string(file))error_exit();
+	if(!validate_string(file))exit(-1);
 
 	char *file_copy=palloc_get_page(0);
-	if(!file_copy)error_exit();
+	if(!file_copy)exit(-1);
 	strlcpy(file_copy, file, PGSIZE);
 	process_exec(file_copy);
 	NOT_REACHED();
@@ -131,7 +126,7 @@ int wait (int pid) {
 }
 
 bool create (const char *file, unsigned initial_size) {
-	if(!validate_string(file)||!strcmp(file, ""))error_exit();
+	if(!validate_string(file)||!strcmp(file, ""))exit(-1);
 	lock_acquire(&file_lock);
 
 	bool ret=filesys_create(file, initial_size);
@@ -141,7 +136,7 @@ bool create (const char *file, unsigned initial_size) {
 }
 
 bool remove (const char *file) {
-	if(!validate_string(file))error_exit();
+	if(!validate_string(file))exit(-1);
 	lock_acquire(&file_lock);
 
 	bool ret=filesys_remove(file);
@@ -151,7 +146,7 @@ bool remove (const char *file) {
 }
 
 int open (const char *file_name) {
-	if(!validate_string(file_name))error_exit();
+	if(!validate_string(file_name))exit(-1);
 
 	struct thread *t=thread_current();
 	int ret=-1;
@@ -188,7 +183,7 @@ int filesize (int fd){
 int read (int fd, void *buffer, unsigned length) {
 
 	int ret=-1;
-	if(!validate_pointer(buffer, length, true))error_exit();
+	if(!validate_pointer(buffer, length, true))exit(-1);
 	lock_acquire(&file_lock);
 	
 	char *buf=(char*)buffer;
@@ -210,7 +205,7 @@ int read (int fd, void *buffer, unsigned length) {
 
 int write (int fd, void *buffer, unsigned length) {
 	int ret=-1;
-	if(!validate_pointer(buffer, length, false))error_exit();
+	if(!validate_pointer(buffer, length, false))exit(-1);
 	lock_acquire(&file_lock);
 
 	struct file_box *file_box=get_filebox(fd);
@@ -254,12 +249,7 @@ void close (int fd) {
 	struct file_box *file_box=get_filebox(fd);
 	if(file_box){
 		list_remove(&(file_box->file_elem));
-		if(file_box->type==FILE){
-			if(--file_box->file_ref->ref_cnt==0){
-				file_close(file_box->file_ref->file);
-				free(file_box->file_ref);
-			}
-		}
+		try_close(file_box);
 		free(file_box);
 	}
 	lock_release(&file_lock);
@@ -281,12 +271,7 @@ int dup2(int oldfd, int newfd){
 	}
 	else{
 		if(new_file_box){
-			if(new_file_box->type==FILE){
-				if(--new_file_box->file_ref->ref_cnt==0){
-					file_close(new_file_box->file_ref->file);
-					free(new_file_box->file_ref);
-				}
-			}
+			try_close(new_file_box);
 			list_remove(&new_file_box->file_elem);
 			free(new_file_box);
 		}
