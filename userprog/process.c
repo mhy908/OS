@@ -228,7 +228,7 @@ __do_fork (void *_aux) {
         if (new_file_box == NULL) goto error;
 
 		if(file_box->type==FILE){
-			struct file * new_file = file_duplicate(file_box->file_ref->file);
+			struct file * new_file=file_duplicate(file_box->file_ref->file);
 			new_file_box->type=FILE;
 			struct file_ref *new_file_ref=(struct file_ref*)malloc(sizeof(struct file_ref));
 			new_file_ref->file=new_file;
@@ -241,7 +241,7 @@ __do_fork (void *_aux) {
 			new_file_box->fd=file_box->fd;
 		}
 		list_push_back(&current->file_list, &new_file_box->file_elem);
-        e = list_next(e);
+        e=list_next(e);
     }
 
 	process_init ();
@@ -646,7 +646,7 @@ done:
 		t->executable=file;
 	}
 	else{
-		file_close (file);
+		file_close(file);
 		t->executable=NULL;
 	}
 	return success;

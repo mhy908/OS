@@ -30,7 +30,6 @@ main (int argc UNUSED, char *argv[] UNUSED) {
   CHECK (dup2 (fd1, fd2) > 1, "first dup2()");
 
   byte_cnt += read (fd2, buffer + byte_cnt , sizeof sample - byte_cnt);
-
   if (strcmp (sample, buffer)) {
     msg ("expected text:\n%s", sample);
     msg ("text actually read:\n%s", buffer);
