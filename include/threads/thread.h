@@ -134,7 +134,6 @@ struct thread {
 	
 	// wooyechan
 	bool wait_on_exit;
-	struct semaphore fork_sema;
 	
 #endif
 #ifdef VM
