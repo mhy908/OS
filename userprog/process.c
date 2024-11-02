@@ -245,6 +245,7 @@ __do_fork (void *_aux) {
 			new_file_box->type=FILE;
        	 	new_file_box->file = new_file;
 			new_file_box->fd=file_box->fd;
+			new_file->inode->open_cnt ++;
 		}
 		else{
 			new_file_box->type=file_box->type;
