@@ -5,6 +5,12 @@
 
 //wooyechan
 // to allow two argument at once
+struct load_arg{
+	struct file* file;
+	off_t ofs;
+	uint32_t read_bytes;
+	uint32_t zero_bytes;
+};
 struct fork_arg {
     struct thread *parent;
     struct intr_frame if_;

@@ -10,6 +10,7 @@
 
 #include "vm/vm.h"
 #include "vm/uninit.h"
+#include "userprog/process.h"
 
 static bool uninit_initialize (struct page *page, void *kva);
 static void uninit_destroy (struct page *page);
@@ -49,11 +50,11 @@ uninit_initialize (struct page *page, void *kva) {
 
 	/* Fetch first, page_initialize may overwrite the values */
 	vm_initializer *init = uninit->init;
-	void *aux = uninit->aux;
+	struct load_arg *load_arg = uninit->aux;
+
 
 	/* TODO: You may need to fix this function. */
-	return uninit->page_initializer (page, uninit->type, kva) &&
-		(init ? init (page, aux) : true);
+	return uninit->page_initializer (page, uninit->type, kva) && (init ? init (page, load_arg) : true);
 }
 
 /* Free the resources hold by uninit_page. Although most of pages are transmuted
@@ -62,7 +63,8 @@ uninit_initialize (struct page *page, void *kva) {
  * PAGE will be freed by the caller. */
 static void
 uninit_destroy (struct page *page) {
-	struct uninit_page *uninit UNUSED = &page->uninit;
+	struct uninit_page *uninit = &page->uninit;
+	free(uninit->aux);
 	/* TODO: Fill this function.
 	 * TODO: If you don't have anything to do, just return. */
 }

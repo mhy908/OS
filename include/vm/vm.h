@@ -27,6 +27,7 @@ enum vm_type {
 #include "vm/uninit.h"
 #include "vm/anon.h"
 #include "vm/file.h"
+#include <hash.h>
 #ifdef EFILESYS
 #include "filesys/page_cache.h"
 #endif
@@ -46,6 +47,13 @@ struct page {
 	struct frame *frame;   /* Back reference for frame */
 
 	/* Your implementation */
+	
+	//mhy908
+	uint64_t key;
+	struct page *l, *r;
+
+	bool writable;
+	enum vm_type type;
 
 	/* Per-type data are binded into the union.
 	 * Each function automatically detects the current union */
@@ -84,7 +92,10 @@ struct page_operations {
 /* Representation of current process's memory space.
  * We don't want to force you to obey any specific design for this struct.
  * All designs up to you for this. */
+
+//mhy908
 struct supplemental_page_table {
+	struct page *root;
 };
 
 #include "threads/thread.h"

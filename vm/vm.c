@@ -1,8 +1,21 @@
 /* vm.c: Generic interface for virtual memory objects. */
 
 #include "threads/malloc.h"
+#include "threads/vaddr.h"
+#include "userprog/process.h"
 #include "vm/vm.h"
 #include "vm/inspect.h"
+
+//mhy908
+uint64_t derive_key(void *va){
+	//need to round????
+	uint64_t x=pg_round_down(va);
+	x*=998244353;
+	x^=(x>>32);
+	x*=1000000007;
+	x^=(x>>32);
+	return x;
+}
 
 /* Initializes the virtual memory subsystem by invoking each subsystem's
  * intialize codes. */
@@ -46,37 +59,78 @@ vm_alloc_page_with_initializer (enum vm_type type, void *upage, bool writable,
 
 	ASSERT (VM_TYPE(type) != VM_UNINIT)
 
-	struct supplemental_page_table *spt = &thread_current ()->spt;
+	struct supplemental_page_table *spt=&thread_current()->spt;
 
 	/* Check wheter the upage is already occupied or not. */
 	if (spt_find_page (spt, upage) == NULL) {
 		/* TODO: Create the page, fetch the initialier according to the VM type,
 		 * TODO: and then create "uninit" page struct by calling uninit_new. You
 		 * TODO: should modify the field after calling the uninit_new. */
+		
+		struct page *page=(struct page*)malloc(sizeof(struct page));
+		
+		page->key=derive_key(upage);
+		page->writable=writable;
+		page->type=type;
+
+		//printf("key = %llu\n", page->key);
+		
+		bool (*initializer) (struct page*, enum vm_type, void *);
+		if(type==VM_ANON)initializer=anon_initializer;
+		if(type==VM_FILE)initializer=file_backed_initializer;
+		uninit_new(page, upage, init, type, aux, initializer);
 
 		/* TODO: Insert the page into the spt. */
+		//printf("Insert\n");
+
+		spt_insert_page(spt, page);
+		return true;
 	}
 err:
 	return false;
 }
 
+//mhy908
 /* Find VA from spt and return page. On error, return NULL. */
-struct page *
-spt_find_page (struct supplemental_page_table *spt UNUSED, void *va UNUSED) {
-	struct page *page = NULL;
-	/* TODO: Fill this function. */
-
-	return page;
+struct page* spt_find_page_help(struct page* nw, uint64_t tar){
+	printf("nw = %llu tar = %llu\n", nw->key, tar);
+	if(nw->key==tar)return nw;
+	if(nw->key<tar){
+		if(nw->r)return spt_find_page_help(nw->r, tar);
+		return NULL;
+	}
+	if(nw->key>tar){
+		if(nw->l)return spt_find_page_help(nw->l, tar);
+		return NULL;
+	}
 }
-
-/* Insert PAGE into spt with validation. */
-bool
-spt_insert_page (struct supplemental_page_table *spt UNUSED,
-		struct page *page UNUSED) {
-	int succ = false;
+struct page *spt_find_page(struct supplemental_page_table *spt, void *va) {
 	/* TODO: Fill this function. */
-
-	return succ;
+	if(!spt->root)return NULL;
+	return spt_find_page_help(spt->root, derive_key(va));
+}
+/* Insert PAGE into spt with validation. */
+bool spt_insert_page_help(struct page *nw, struct page *page){
+	if(nw->key==page->key)return false;
+	if(nw->key<page->key){
+		if(nw->r)return spt_insert_page_help(nw->r, page);
+		nw->r=page;
+		return true;
+	}
+	if(nw->key>page->key){
+		if(nw->l)return spt_insert_page_help(nw->l, page);
+		nw->l=page;
+		return true;
+	}
+}
+bool spt_insert_page(struct supplemental_page_table *spt, struct page *page){
+	page->key=derive_key(page->va);
+	printf("INSERT %llu\n", page->key);
+	if(!spt->root){
+		spt->root=page;
+		return true;
+	}
+	return spt_insert_page_help(spt->root, page);
 }
 
 void
@@ -110,12 +164,16 @@ vm_evict_frame (void) {
  * space.*/
 static struct frame *
 vm_get_frame (void) {
-	struct frame *frame = NULL;
 	/* TODO: Fill this function. */
-
-	ASSERT (frame != NULL);
-	ASSERT (frame->page == NULL);
-	return frame;
+	void *page=palloc_get_page(PAL_USER);
+	if(page){
+		struct frame* frame=(struct frame*)malloc(sizeof(struct frame));
+		frame->page=NULL;
+		frame->kva=page;
+		return frame;
+	}
+	PANIC("todo");
+	//return vm_evict_frame();
 }
 
 /* Growing the stack. */
@@ -130,10 +188,18 @@ vm_handle_wp (struct page *page UNUSED) {
 
 /* Return true on success */
 bool
-vm_try_handle_fault (struct intr_frame *f UNUSED, void *addr UNUSED,
-		bool user UNUSED, bool write UNUSED, bool not_present UNUSED) {
-	struct supplemental_page_table *spt UNUSED = &thread_current ()->spt;
-	struct page *page = NULL;
+vm_try_handle_fault (struct intr_frame *f, void *addr, bool user, bool write, bool not_present) {
+	struct supplemental_page_table *spt = &thread_current ()->spt;
+	struct page *page = spt_find_page(spt, addr);
+
+
+	if (user && is_kernel_vaddr(addr)){
+		return false;
+	}
+
+	//printf("page = %d\n", page);
+
+
 	/* TODO: Validate the fault */
 	/* TODO: Your code goes here */
 
@@ -149,42 +215,70 @@ vm_dealloc_page (struct page *page) {
 }
 
 /* Claim the page that allocate on VA. */
-bool
-vm_claim_page (void *va UNUSED) {
-	struct page *page = NULL;
+bool vm_claim_page (void *va) {
 	/* TODO: Fill this function */
-
+	struct page* page=spt_find_page(&thread_current()->spt, va);
 	return vm_do_claim_page (page);
 }
 
 /* Claim the PAGE and set up the mmu. */
-static bool
-vm_do_claim_page (struct page *page) {
-	struct frame *frame = vm_get_frame ();
+static bool vm_do_claim_page (struct page *page) {
+	struct frame* frame = vm_get_frame ();
 
 	/* Set links */
-	frame->page = page;
-	page->frame = frame;
+	frame->page=page;
+	page->frame=frame;
 
 	/* TODO: Insert page table entry to map page's VA to frame's PA. */
+	pml4_set_page(thread_current()->pml4, page->va, frame->kva, page->writable);
 
 	return swap_in (page, frame->kva);
 }
 
 /* Initialize new supplemental page table */
-void
-supplemental_page_table_init (struct supplemental_page_table *spt UNUSED) {
+void supplemental_page_table_init (struct supplemental_page_table *spt) {
+	spt->root=NULL;
 }
 
 /* Copy supplemental page table from src to dst */
-bool
-supplemental_page_table_copy (struct supplemental_page_table *dst UNUSED,
-		struct supplemental_page_table *src UNUSED) {
+
+bool page_copy_helper(struct page *p, struct supplemental_page_table *dst){
+	if(p->operations->type==VM_UNINIT){
+		struct load_arg* load_arg=(struct load_arg*)malloc(sizeof(struct load_arg));
+		if(!load_arg)return false;
+		memcpy(load_arg, p->uninit.aux, sizeof(struct load_arg));
+		return vm_alloc_page_with_initializer(p->operations->type, p->va, p->writable, p->uninit.init, load_arg);
+	}
+	else{
+		if(!vm_alloc_page_with_initializer(p->operations->type, p->va, p->writable, NULL, NULL))return false;
+		if(!vm_claim_page(p->va))return false;
+		struct page *cur=spt_find_page(dst, p->va);
+		memcpy(cur->va, p->frame->kva, PGSIZE);
+		return true;
+	}
+}
+bool page_table_copy_helper(struct page *p, struct supplemental_page_table *dst){
+	if(!page_copy_helper(p, dst))return false;
+	if(p->l&&!page_table_copy_helper(p->l, dst))return false;
+	if(p->r&&!page_table_copy_helper(p->r, dst))return false;
+	return true;
+}
+bool supplemental_page_table_copy (struct supplemental_page_table *dst,
+		struct supplemental_page_table *src) {
+	if(!src->root)return true;
+	return page_table_copy_helper(src->root, dst);
 }
 
 /* Free the resource hold by the supplemental page table */
-void
-supplemental_page_table_kill (struct supplemental_page_table *spt UNUSED) {
+void page_table_kill_helper(struct page *p){
+	if(p->l)page_table_kill_helper(p->l);
+	if(p->r)page_table_kill_helper(p->r);
+	vm_dealloc_page(p);
+}
+void supplemental_page_table_kill (struct supplemental_page_table *spt) {
 	/* TODO: Destroy all the supplemental_page_table hold by thread and
 	 * TODO: writeback all the modified contents to the storage. */
+	if(!spt->root)return;
+	page_table_kill_helper(spt->root);
+	spt->root=NULL;
 }
