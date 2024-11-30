@@ -84,8 +84,7 @@ vm_alloc_page_with_initializer (enum vm_type type, void *upage, bool writable,
 		page->writable=writable;
 		page->type=type;
 
-		spt_insert_page(spt, page);
-		return true;
+		return spt_insert_page(spt, page);
 	}
 err:
 	return false;
@@ -208,7 +207,7 @@ vm_try_handle_fault (struct intr_frame *f, void *addr, bool user, bool write, bo
 		return false;
 	}
 
-	printf("(vm_try_handle_fault) page : %d\n", page);
+	//printf("(vm_try_handle_fault) page : %d\n", page);
 
 
 	/* TODO: Validate the fault */
@@ -217,18 +216,18 @@ vm_try_handle_fault (struct intr_frame *f, void *addr, bool user, bool write, bo
 
 	void *rsp;
 	if (user) {
-		printf ("(vm_try_handle_fault) USER\n");
+		//printf ("(vm_try_handle_fault) USER\n");
 		rsp = f->rsp;
 	}
 	else rsp = thread_current()->rsp;
 
 	// Debug	
 	if (!page) {
-		printf ("(vm_try_handle_fault) rsp : %x, addr : %x, limit : %x, user_stack : %x \n",rsp, addr, USER_STACK - MEGA_BYTE, USER_STACK);
+		//printf ("(vm_try_handle_fault) rsp : %x, addr : %x, limit : %x, user_stack : %x \n",rsp, addr, USER_STACK - MEGA_BYTE, USER_STACK);
 	}
 
 	if (!page && (USER_STACK - MEGA_BYTE) <= addr && addr <= USER_STACK && rsp - 8 <= addr) {
-		printf ("(vm_try_handle_fault) stack_growth\n");
+		//printf ("(vm_try_handle_fault) stack_growth\n");
 		vm_stack_growth(addr);
 		return true;
 	}
@@ -256,9 +255,11 @@ bool vm_claim_page (void *va) {
 
 /* Claim the PAGE and set up the mmu. */
 static bool vm_do_claim_page (struct page *page) {
+	if (!page) return false;
+
 	struct frame* frame = vm_get_frame ();
 
-	if (!page) return false;
+	if (!frame) return false;
 	/* Set links */
 	frame->page=page;
 	page->frame=frame;
