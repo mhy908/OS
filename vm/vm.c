@@ -6,6 +6,8 @@
 #include "vm/vm.h"
 #include "vm/inspect.h"
 
+#define MEGA_BYTE 0x100000
+
 //mhy908
 uint64_t derive_key(void *va){
 	//need to round????
@@ -68,11 +70,6 @@ vm_alloc_page_with_initializer (enum vm_type type, void *upage, bool writable,
 		 * TODO: should modify the field after calling the uninit_new. */
 		
 		struct page *page=(struct page*)malloc(sizeof(struct page));
-		
-		page->key=derive_key(upage);
-		page->writable=writable;
-		page->type=type;
-
 		//printf("key = %llu\n", page->key);
 		
 		bool (*initializer) (struct page*, enum vm_type, void *);
@@ -82,6 +79,10 @@ vm_alloc_page_with_initializer (enum vm_type type, void *upage, bool writable,
 
 		/* TODO: Insert the page into the spt. */
 		//printf("Insert\n");
+		
+		page->key=derive_key(upage);
+		page->writable=writable;
+		page->type=type;
 
 		spt_insert_page(spt, page);
 		return true;
@@ -93,8 +94,11 @@ err:
 //mhy908
 /* Find VA from spt and return page. On error, return NULL. */
 struct page* spt_find_page_help(struct page* nw, uint64_t tar){
-	printf("nw = %llu tar = %llu\n", nw->key, tar);
-	if(nw->key==tar)return nw;
+	//printf("nw = %llu tar = %llu\n", nw->key, tar);
+	if(nw->key==tar) {
+		//printf ("(spt_find_page_help) nw : %d\n", nw);
+		return nw;
+	}
 	if(nw->key<tar){
 		if(nw->r)return spt_find_page_help(nw->r, tar);
 		return NULL;
@@ -125,7 +129,7 @@ bool spt_insert_page_help(struct page *nw, struct page *page){
 }
 bool spt_insert_page(struct supplemental_page_table *spt, struct page *page){
 	page->key=derive_key(page->va);
-	printf("INSERT %llu\n", page->key);
+	// printf("INSERT %llu\n", page->key);
 	if(!spt->root){
 		spt->root=page;
 		return true;
@@ -178,7 +182,14 @@ vm_get_frame (void) {
 
 /* Growing the stack. */
 static void
-vm_stack_growth (void *addr UNUSED) {
+vm_stack_growth (void *addr_) {
+	void *addr = pg_round_down(addr_);
+
+	if (vm_alloc_page(VM_ANON, addr, true) && vm_claim_page(addr)) {
+		memset(addr, 0, PGSIZE);
+		addr += PGSIZE;
+	}
+
 }
 
 /* Handle the fault on write_protected page */
@@ -197,13 +208,35 @@ vm_try_handle_fault (struct intr_frame *f, void *addr, bool user, bool write, bo
 		return false;
 	}
 
-	//printf("page = %d\n", page);
+	printf("(vm_try_handle_fault) page : %d\n", page);
 
 
 	/* TODO: Validate the fault */
 	/* TODO: Your code goes here */
+	if (!not_present) return false;
 
-	return vm_do_claim_page (page);
+	void *rsp;
+	if (user) {
+		printf ("(vm_try_handle_fault) USER\n");
+		rsp = f->rsp;
+	}
+	else rsp = thread_current()->rsp;
+
+	// Debug	
+	if (!page) {
+		printf ("(vm_try_handle_fault) rsp : %x, addr : %x, limit : %x, user_stack : %x \n",rsp, addr, USER_STACK - MEGA_BYTE, USER_STACK);
+	}
+
+	if (!page && (USER_STACK - MEGA_BYTE) <= addr && addr <= USER_STACK && rsp - 8 <= addr) {
+		printf ("(vm_try_handle_fault) stack_growth\n");
+		vm_stack_growth(addr);
+		return true;
+	}
+
+	//printf ("wirte error?\n");
+	if (write && !page->writable) return false;
+
+	return vm_do_claim_page(page);
 }
 
 /* Free the page.
@@ -225,12 +258,14 @@ bool vm_claim_page (void *va) {
 static bool vm_do_claim_page (struct page *page) {
 	struct frame* frame = vm_get_frame ();
 
+	if (!page) return false;
 	/* Set links */
 	frame->page=page;
 	page->frame=frame;
 
 	/* TODO: Insert page table entry to map page's VA to frame's PA. */
-	pml4_set_page(thread_current()->pml4, page->va, frame->kva, page->writable);
+	if (!pml4_set_page(thread_current()->pml4, page->va, frame->kva, page->writable))
+		return false;
 
 	return swap_in (page, frame->kva);
 }

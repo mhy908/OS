@@ -320,6 +320,8 @@ syscall_handler (struct intr_frame *f) {
 	the RAX register. System calls that return a value can do so by modifying
 	the rax member of struct intr_frame
 	*/
+	struct thread *curr = thread_current();
+	curr->rsp = f->rsp;
 
 	uint64_t syscall_number = f->R.rax;
 	uint64_t rdi=f->R.rdi, rsi=f->R.rsi, rdx=f->R.rdx;

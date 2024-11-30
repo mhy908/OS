@@ -881,7 +881,12 @@ setup_stack (struct intr_frame *if_) {
 	 * TODO: You should mark the page is stack. */
 	/* TODO: Your code goes here */
 
-	bool alloc_succ = vm_alloc_page_with_initializer(VM_ANON, stack_bottom, true, NULL, NULL);
+	if (vm_alloc_page(VM_ANON, stack_bottom, true) && vm_claim_page(stack_bottom)) {
+		if_->rsp = USER_STACK;
+		return true;
+	}
+	/*
+	bool alloc_succ = vm_alloc_page(VM_ANON || VM_MARKER_0, stack_bottom, true);
 	if (!alloc_succ) {
 		struct page *fail_page = spt_find_page(&thread_current()->spt, stack_bottom);
 		palloc_free_page(fail_page);
@@ -899,5 +904,6 @@ setup_stack (struct intr_frame *if_) {
 	if_->rsp = USER_STACK;
 
 	return success;
+	*/
 }
 #endif /* VM */
