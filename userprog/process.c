@@ -806,7 +806,7 @@ install_page (void *upage, void *kpage, bool writable) {
 
 
 
-static bool
+bool
 lazy_load_segment (struct page *page, void *aux) {
 	/* TODO: Load the segment from the file */
 	/* TODO: This called when the first page fault occurs on address VA. */
@@ -865,7 +865,7 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
 		read_bytes -= page_read_bytes;
 		zero_bytes -= page_zero_bytes;
 		upage += PGSIZE;
-		ofs += PGSIZE;
+		ofs += page_read_bytes;
 	}
 	return true;
 }
@@ -881,7 +881,12 @@ setup_stack (struct intr_frame *if_) {
 	 * TODO: You should mark the page is stack. */
 	/* TODO: Your code goes here */
 
-	bool alloc_succ = vm_alloc_page_with_initializer(VM_ANON, stack_bottom, true, NULL, NULL);
+	if (vm_alloc_page(VM_ANON , stack_bottom, true) && vm_claim_page(stack_bottom)) {
+		if_->rsp = USER_STACK;
+		return true;
+	}
+	/*
+	bool alloc_succ = vm_alloc_page(VM_ANON | VM_MARKER_0, stack_bottom, true);
 	if (!alloc_succ) {
 		struct page *fail_page = spt_find_page(&thread_current()->spt, stack_bottom);
 		palloc_free_page(fail_page);
@@ -899,5 +904,6 @@ setup_stack (struct intr_frame *if_) {
 	if_->rsp = USER_STACK;
 
 	return success;
+	*/
 }
 #endif /* VM */

@@ -290,6 +290,23 @@ int dup2(int oldfd, int newfd){
 	return ret;
 }
 
+void *mmap (void *addr, size_t length, int writable, int fd, off_t offset) {
+
+	if (offset % PGSIZE || !length || fd <= 1) return NULL;
+	
+	struct file_box *fbox = get_filebox(fd);
+	struct file *file = fbox->file_ref->file;
+
+	if (!file) return NULL;
+	//printf ("mmap start\n");
+	return do_mmap(addr, length, writable, file, offset);
+}
+
+void munmap(void *addr){
+	//printf ("munmap start\n");
+	do_munmap(addr);
+}
+
 void
 syscall_init (void) {
 	write_msr(MSR_STAR, ((uint64_t)SEL_UCSEG - 0x10) << 48  |
@@ -320,11 +337,14 @@ syscall_handler (struct intr_frame *f) {
 	the RAX register. System calls that return a value can do so by modifying
 	the rax member of struct intr_frame
 	*/
+	struct thread *curr = thread_current();
+	curr->rsp = f->rsp;
 
 	uint64_t syscall_number = f->R.rax;
-	uint64_t rdi=f->R.rdi, rsi=f->R.rsi, rdx=f->R.rdx;
+	uint64_t rdi=f->R.rdi, rsi=f->R.rsi, rdx=f->R.rdx, r10=f->R.r10, r8=f->R.r8;
 	int pid;
 	//printf ("BEFORE (syscall_handler) syscall_number : %d, thread : %d, opened_file : %d\n", syscall_number, thread_current()->tid, list_size(&thread_current()->file_list));
+	//printf ("(syscall_handler) syscall_number : %d\n",syscall_number); 
 	switch (syscall_number){
 	case SYS_HALT:
 		halt();
@@ -370,6 +390,12 @@ syscall_handler (struct intr_frame *f) {
 		break;
 	case SYS_DUP2:
 		f->R.rax = dup2(rdi, rsi);
+		break;	
+	case SYS_MMAP:
+		f->R.rax = mmap(rdi, rsi, rdx, r10, r8);
+		break;	
+	case SYS_MUNMAP:
+		munmap(rdi);
 		break;	
 	}
 	//printf ("AFTER (syscall_handler) syscall_number : %d, thread : %d, opened_file : %d\n", syscall_number, thread_current()->tid, list_size(&thread_current()->file_list));
