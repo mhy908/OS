@@ -882,6 +882,7 @@ setup_stack (struct intr_frame *if_) {
 	/* TODO: Your code goes here */
 
 	if (vm_alloc_page(VM_ANON , stack_bottom, true) && vm_claim_page(stack_bottom)) {
+		memset (stack_bottom, 0, PGSIZE);
 		if_->rsp = USER_STACK;
 		return true;
 	}

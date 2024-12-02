@@ -183,12 +183,15 @@ vm_get_frame (void) {
 static void
 vm_stack_growth (void *addr_) {
 	void *addr = pg_round_down(addr_);
+	void *sp = thread_current()->rsp;
 
-	if (vm_alloc_page(VM_ANON, addr, true) && vm_claim_page(addr)) {
-		memset(addr, 0, PGSIZE);
-		addr += PGSIZE;
+	for (; addr < sp; addr += PGSIZE) {
+		if (vm_alloc_page(VM_ANON, addr, true) && vm_claim_page(addr)) {
+			memset(addr, 0, PGSIZE);
+		} else {
+			break;
+		}
 	}
-
 }
 
 /* Handle the fault on write_protected page */
@@ -283,10 +286,10 @@ bool page_copy_helper(struct page *p, struct supplemental_page_table *dst){
 		struct load_arg* load_arg=(struct load_arg*)malloc(sizeof(struct load_arg));
 		if(!load_arg)return false;
 		memcpy(load_arg, p->uninit.aux, sizeof(struct load_arg));
-		return vm_alloc_page_with_initializer(p->operations->type, p->va, p->writable, p->uninit.init, load_arg);
+		return vm_alloc_page_with_initializer(p->type, p->va, p->writable, p->uninit.init, load_arg);
 	}
 	else{
-		if(!vm_alloc_page_with_initializer(p->operations->type, p->va, p->writable, NULL, NULL))return false;
+		if(!vm_alloc_page_with_initializer(p->type, p->va, p->writable, NULL, NULL))return false;
 		if(!vm_claim_page(p->va))return false;
 		struct page *cur=spt_find_page(dst, p->va);
 		memcpy(cur->va, p->frame->kva, PGSIZE);
