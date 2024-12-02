@@ -53,11 +53,11 @@ bool validate_pointer(void *p, size_t size, bool writable){
 
    bool ret=true;
    for(; ptr1<=ptr2; ptr1+=PGSIZE){
-      struct page *p=spt_find_page(spt, ptr1);
-      if(p==NULL||(writable&&!p->writable)){
-         ret=false;
-         break;
-      }
+      	struct page *p=spt_find_page(spt, ptr1);
+     	if(p==NULL||(writable&&!p->writable)){
+      	   	ret=false;
+       	 	break;
+      	}
    }
    return ret;
 }
@@ -68,15 +68,15 @@ bool validate_string(void *p){
    void *ptr=NULL;
    bool ret=true;
    for(char *i=p; ; i++){
-      if(ptr!=pg_round_down(i)){
-         ptr=pg_round_down(i);
-         struct page *p=spt_find_page(spt, ptr);
-         if(p==NULL){
-            ret=false;
-            break;
-         }
-      }
-      if(*i==0)break;
+      	if(ptr!=pg_round_down(i)){
+         	ptr=pg_round_down(i);
+         	struct page *p=spt_find_page(spt, ptr);
+         	if(p==NULL){
+            	ret=false;
+            	break;
+         	}
+      	}
+      	if(*i==0)break;
    }
    return ret;
 }
@@ -120,8 +120,8 @@ bool validate_string(void *p){
 	}
 	return ret;
 }
-
 #endif
+
 struct file_box* get_filebox(int fd){
 	struct list *file_list=&thread_current()->file_list;
 	struct list_elem *e;

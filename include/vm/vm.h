@@ -51,7 +51,9 @@ struct page {
 	//mhy908
 	uint64_t key;
 	struct page *l, *r;
+	struct thread *th;
 
+	bool dead;
 	bool writable;
 	enum vm_type type;
 
@@ -69,6 +71,7 @@ struct page {
 
 /* The representation of "frame" */
 struct frame {
+	struct list_elem list_elem;
 	void *kva;
 	struct page *page;
 };

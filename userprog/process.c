@@ -26,6 +26,7 @@ static void process_cleanup (void);
 static bool load (const char *file_name, struct intr_frame *if_);
 static void initd (void *f_name);
 static void __do_fork (void *);
+struct lock file_lock;
 
 /* General process initializer for initd and other process. */
 static void
@@ -557,6 +558,7 @@ load (const char *file_name, struct intr_frame *if_) {
 	process_activate (thread_current ());
 
 	/* Open executable file. */
+	lock_acquire(&file_lock);
 	file = filesys_open (file_name);
 	if (file == NULL) {
 		printf ("load: %s: open failed\n", file_name);
@@ -651,6 +653,7 @@ done:
 		file_close(file);
 		t->executable=NULL;
 	}
+	lock_release(&file_lock);
 	return success;
 }
 
@@ -813,9 +816,8 @@ lazy_load_segment (struct page *page, void *aux) {
 	/* TODO: VA is available when calling this function. */
 	uint8_t *paddr=page->frame->kva;
 	struct load_arg* load_arg=aux;
-	file_seek(load_arg->file, load_arg->ofs);
-	file_read(load_arg->file, paddr, load_arg->read_bytes);
-	
+
+	file_read_at(load_arg->file, paddr, load_arg->read_bytes, load_arg->offset);
 	memset(paddr+load_arg->read_bytes, 0, load_arg->zero_bytes);
 
 	return true;
@@ -857,7 +859,7 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
 
 		struct load_arg* aux=(struct load_arg*)malloc(sizeof(struct load_arg));
 		aux->file=file;
-		aux->ofs=ofs;
+		aux->offset=ofs;
 		aux->read_bytes=page_read_bytes;
 		aux->zero_bytes=page_zero_bytes;
 		if (!vm_alloc_page_with_initializer (VM_ANON, upage, writable, lazy_load_segment, aux))
@@ -883,31 +885,10 @@ setup_stack (struct intr_frame *if_) {
 	 * TODO: You should mark the page is stack. */
 	/* TODO: Your code goes here */
 
-	if (vm_alloc_page(VM_ANON , stack_bottom, true) && vm_claim_page(stack_bottom)) {
-		memset (stack_bottom, 0, PGSIZE);
+	if (vm_alloc_page(VM_ANON, stack_bottom, true) && vm_claim_page(stack_bottom)) {
 		if_->rsp = USER_STACK;
 		return true;
 	}
 	return false;
-	/*
-	bool alloc_succ = vm_alloc_page(VM_ANON | VM_MARKER_0, stack_bottom, true);
-	if (!alloc_succ) {
-		struct page *fail_page = spt_find_page(&thread_current()->spt, stack_bottom);
-		palloc_free_page(fail_page);
-		return false;
-	}
-	bool claim_succ = vm_claim_page(stack_bottom);
-	if (!claim_succ){
-		struct page *fail_page = spt_find_page(&thread_current()->spt, stack_bottom);
-		palloc_free_page(fail_page);
-		return false;
-	}
-
-	memset(stack_bottom, 0, PGSIZE);
-	success = true;
-	if_->rsp = USER_STACK;
-
-	return success;
-	*/
 }
 #endif /* VM */
