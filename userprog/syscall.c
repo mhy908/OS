@@ -332,7 +332,7 @@ int dup2(int oldfd, int newfd){
 
 void *mmap (void *addr, size_t length, int writable, int fd, off_t offset) {
 	if (addr==NULL || !is_user_vaddr(addr) || pg_round_down(addr) != addr) return NULL;
-	if (offset % PGSIZE || !length || fd <= 1) return NULL;
+	if (offset % PGSIZE || !length || length > KERN_BASE || fd <= 1) return NULL;
 	
 	struct file_box *fbox = get_filebox(fd);
 	struct file *file = fbox->file_ref->file;

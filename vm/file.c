@@ -57,8 +57,8 @@ file_backed_swap_out (struct page *page) {
 static void
 file_backed_destroy (struct page *page) {
 	struct file_page *file_page = &page->file;
-    uint64_t *pml4 = &thread_current()->pml4;
-
+    uint64_t *pml4 = thread_current()->pml4;
+    
     if (pml4_is_dirty(pml4, page->va)) {
         file_write_at(file_page->file, page->va, file_page->page_read_bytes, file_page->offset);
         pml4_set_dirty(pml4, page->va, false);
@@ -124,12 +124,14 @@ do_munmap(void *addr) {
     while (true) {
         page = spt_find_page(&curr->spt, looking_addr);
         if (!page) break;
+
+        destroy(page);
+
         if (page->frame != NULL) {
             free(page->frame);
             page->frame = NULL;
         }
 
-        destroy(page);
         looking_addr += PGSIZE;
     }
 }
