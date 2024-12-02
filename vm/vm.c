@@ -183,12 +183,15 @@ vm_get_frame (void) {
 static void
 vm_stack_growth (void *addr_) {
 	void *addr = pg_round_down(addr_);
+	void *sp = thread_current()->rsp;
 
-	if (vm_alloc_page(VM_ANON, addr, true) && vm_claim_page(addr)) {
-		memset(addr, 0, PGSIZE);
-		addr += PGSIZE;
+	for (; addr < sp; addr += PGSIZE) {
+		if (vm_alloc_page(VM_ANON, addr, true) && vm_claim_page(addr)) {
+			memset(addr, 0, PGSIZE);
+		} else {
+			break;
+		}
 	}
-
 }
 
 /* Handle the fault on write_protected page */
