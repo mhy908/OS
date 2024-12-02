@@ -18,6 +18,8 @@
 #include "intrinsic.h"
 #include "lib/string.h"
 #include "devices/input.h"
+#include "vm/vm.h"
+
 
 #include <string.h>
 #include <stdlib.h>
@@ -44,13 +46,17 @@ struct lock file_lock;
 //mhy908 - validation mechanism
 bool validate_pointer(void *p, size_t size, bool writable){
 	if(p==NULL||!is_user_vaddr(p))return false;
+
 	struct thread *th=thread_current();
 	void *ptr1=pg_round_down(p);
 	void *ptr2=pg_round_down(p+size);
+	struct supplemental_page_table *spt=&th->spt;
+
 	bool ret=true;
 	for(; ptr1<=ptr2; ptr1+=PGSIZE){
-		uint64_t *pte=pml4e_walk(th->pml4, (uint64_t)ptr1, 0);
-		if(pte==NULL||is_kern_pte(pte)||(writable&&!is_writable(pte))){
+		struct page *p=spt_find_page(spt, ptr1);
+		//printf("ptr1 = %d ptr2 = %d\n", ptr1, ptr2);
+		if(p==NULL||(writable&&!p->writable)){
 			ret=false;
 			break;
 		}
@@ -60,14 +66,14 @@ bool validate_pointer(void *p, size_t size, bool writable){
 bool validate_string(void *p){
 	if(p==NULL||!is_user_vaddr(p))return false;
 	struct thread *th=thread_current();
+	struct supplemental_page_table *spt=&th->spt;
 	void *ptr=NULL;
-	uint64_t *pte=NULL;
 	bool ret=true;
 	for(char *i=p; ; i++){
 		if(ptr!=pg_round_down(i)){
 			ptr=pg_round_down(i);
-			pte=pml4e_walk(th->pml4, (uint64_t)ptr, 0);
-			if(pte==NULL||is_kern_pte(pte)){
+			struct page *p=spt_find_page(spt, ptr);
+			if(p==NULL){
 				ret=false;
 				break;
 			}
@@ -184,6 +190,7 @@ int read (int fd, void *buffer, unsigned length) {
 
 	int ret=-1;
 	if(!validate_pointer(buffer, length, true))exit(-1);
+
 	lock_acquire(&file_lock);
 	
 	char *buf=(char*)buffer;

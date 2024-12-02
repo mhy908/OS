@@ -842,6 +842,8 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
 	ASSERT (pg_ofs (upage) == 0);
 	ASSERT (ofs % PGSIZE == 0);
 
+	//printf("call load segment read = %d zero = %d writable = %d\n", read_bytes, zero_bytes, writable);
+
 	while (read_bytes > 0 || zero_bytes > 0) {
 		/* Do calculate how to fill this page.
 		 * We will read PAGE_READ_BYTES bytes from FILE
@@ -881,10 +883,13 @@ setup_stack (struct intr_frame *if_) {
 	 * TODO: You should mark the page is stack. */
 	/* TODO: Your code goes here */
 
-	if (vm_alloc_page(VM_ANON , stack_bottom, true) && vm_claim_page(stack_bottom)) {
+	//printf("setup_stack\n");
+	if (vm_alloc_page_with_initializer(VM_ANON , stack_bottom, true, NULL, NULL) && vm_claim_page(stack_bottom)) {
+		memset(stack_bottom, 0, PGSIZE);
 		if_->rsp = USER_STACK;
 		return true;
 	}
+	return false;
 	/*
 	bool alloc_succ = vm_alloc_page(VM_ANON | VM_MARKER_0, stack_bottom, true);
 	if (!alloc_succ) {

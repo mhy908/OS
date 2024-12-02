@@ -283,10 +283,10 @@ bool page_copy_helper(struct page *p, struct supplemental_page_table *dst){
 		struct load_arg* load_arg=(struct load_arg*)malloc(sizeof(struct load_arg));
 		if(!load_arg)return false;
 		memcpy(load_arg, p->uninit.aux, sizeof(struct load_arg));
-		return vm_alloc_page_with_initializer(p->operations->type, p->va, p->writable, p->uninit.init, load_arg);
+		return vm_alloc_page_with_initializer(p->type, p->va, p->writable, p->uninit.init, load_arg);
 	}
 	else{
-		if(!vm_alloc_page_with_initializer(p->operations->type, p->va, p->writable, NULL, NULL))return false;
+		if(!vm_alloc_page_with_initializer(p->type, p->va, p->writable, NULL, NULL))return false;
 		if(!vm_claim_page(p->va))return false;
 		struct page *cur=spt_find_page(dst, p->va);
 		memcpy(cur->va, p->frame->kva, PGSIZE);
@@ -301,7 +301,10 @@ bool page_table_copy_helper(struct page *p, struct supplemental_page_table *dst)
 }
 bool supplemental_page_table_copy (struct supplemental_page_table *dst,
 		struct supplemental_page_table *src) {
-	if(!src->root)return true;
+	if(!src->root){
+		dst->root=NULL;
+		return true;
+	}
 	return page_table_copy_helper(src->root, dst);
 }
 
