@@ -42,7 +42,45 @@ void syscall_handler (struct intr_frame *);
 
 //mhy908 - lock for filesystem
 struct lock file_lock;
+#ifdef VM
+bool validate_pointer(void *p, size_t size, bool writable){
+   if(p==NULL||!is_user_vaddr(p))return false;
 
+   struct thread *th=thread_current();
+   void *ptr1=pg_round_down(p);
+   void *ptr2=pg_round_down(p+size);
+   struct supplemental_page_table *spt=&th->spt;
+
+   bool ret=true;
+   for(; ptr1<=ptr2; ptr1+=PGSIZE){
+      struct page *p=spt_find_page(spt, ptr1);
+      if(p==NULL||(writable&&!p->writable)){
+         ret=false;
+         break;
+      }
+   }
+   return ret;
+}
+bool validate_string(void *p){
+   if(p==NULL||!is_user_vaddr(p))return false;
+   struct thread *th=thread_current();
+   struct supplemental_page_table *spt=&th->spt;
+   void *ptr=NULL;
+   bool ret=true;
+   for(char *i=p; ; i++){
+      if(ptr!=pg_round_down(i)){
+         ptr=pg_round_down(i);
+         struct page *p=spt_find_page(spt, ptr);
+         if(p==NULL){
+            ret=false;
+            break;
+         }
+      }
+      if(*i==0)break;
+   }
+   return ret;
+}
+#else
 //mhy908 - validation mechanism
 bool validate_pointer(void *p, size_t size, bool writable){
 	if(p==NULL||!is_user_vaddr(p))return false;
@@ -83,6 +121,7 @@ bool validate_string(void *p){
 	return ret;
 }
 
+#endif
 struct file_box* get_filebox(int fd){
 	struct list *file_list=&thread_current()->file_list;
 	struct list_elem *e;
@@ -298,19 +337,21 @@ int dup2(int oldfd, int newfd){
 }
 
 void *mmap (void *addr, size_t length, int writable, int fd, off_t offset) {
-
-	if (offset % PGSIZE || !length || fd <= 1) return NULL;
+	if (addr==NULL || !is_user_vaddr(addr) || pg_round_down(addr) != addr) return NULL;
+	if (offset % PGSIZE || !length || length > KERN_BASE || fd <= 1) return NULL;
 	
 	struct file_box *fbox = get_filebox(fd);
 	struct file *file = fbox->file_ref->file;
 
-	if (!file) return NULL;
+	if (!file || !file_length(file)) return NULL;
 	//printf ("mmap start\n");
 	return do_mmap(addr, length, writable, file, offset);
 }
 
 void munmap(void *addr){
 	//printf ("munmap start\n");
+	if (addr==NULL||!is_user_vaddr(addr) || pg_round_down(addr) != addr) return NULL;
+
 	do_munmap(addr);
 }
 

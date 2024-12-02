@@ -33,6 +33,12 @@ file_backed_initializer (struct page *page, enum vm_type type, void *kva) {
 	page->operations = &file_ops;
 
 	struct file_page *file_page = &page->file;
+
+    struct load_arg *aux = (struct load_arg *)page->uninit.aux;
+    file_page->file = aux->file;
+    file_page->offset = aux->ofs;
+    file_page->page_read_bytes = aux->read_bytes;
+    file_page->page_zero_bytes = aux->zero_bytes;
 }
 
 /* Swap in the page by read contents from the file. */
@@ -50,7 +56,18 @@ file_backed_swap_out (struct page *page) {
 /* Destory the file backed page. PAGE will be freed by the caller. */
 static void
 file_backed_destroy (struct page *page) {
-	struct file_page *file_page UNUSED = &page->file;
+	struct file_page *file_page = &page->file;
+    uint64_t *pml4 = thread_current()->pml4;
+    
+    if (pml4_is_dirty(pml4, page->va)) {
+        file_write_at(file_page->file, page->va, file_page->page_read_bytes, file_page->offset);
+        pml4_set_dirty(pml4, page->va, false);
+    }
+
+    file_page->file = NULL;
+    file_page->offset = 0;
+    file_page->page_read_bytes = 0;
+    file_page->page_zero_bytes = 0;
 }
 
 /* Do the mmap */
@@ -99,5 +116,23 @@ do_mmap (void *addr, size_t length, int writable,
 
 /* Do the munmap */
 void
-do_munmap (void *addr) {
+do_munmap(void *addr) {
+    struct thread *curr = thread_current();
+    struct page *page;
+    void *looking_addr = addr;
+
+    while (true) {
+        page = spt_find_page(&curr->spt, looking_addr);
+        if (!page) break;
+
+        destroy(page);
+
+        if (page->frame != NULL) {
+            free(page->frame);
+            page->frame = NULL;
+        }
+
+        looking_addr += PGSIZE;
+    }
 }
+
