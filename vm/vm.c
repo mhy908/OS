@@ -205,14 +205,10 @@ vm_get_frame (void) {
 static void
 vm_stack_growth (void *addr_) {
 	void *addr = pg_round_down(addr_);
-	void *sp = thread_current()->rsp;
-
-	for (; addr < sp; addr += PGSIZE) {
-		if (vm_alloc_page(VM_ANON, addr, true) && vm_claim_page(addr)) {
-			memset(addr, 0, PGSIZE);
-		} else {
-			break;
-		}
+	void *rsp = thread_current()->rsp;
+	for (; addr < rsp; addr += PGSIZE) {
+		if (vm_alloc_page(VM_ANON, addr, true) && vm_claim_page(addr)) memset(addr, 0, PGSIZE);
+		else break;
 	}
 }
 
@@ -226,7 +222,7 @@ bool
 vm_try_handle_fault (struct intr_frame *f, void *addr, bool user, bool write, bool not_present) {
 	struct supplemental_page_table *spt = &thread_current ()->spt;
 	struct page *page = spt_find_page(spt, addr);
-
+	void *rsp;
 
 	if (user && is_kernel_vaddr(addr)){
 		return false;
@@ -235,19 +231,13 @@ vm_try_handle_fault (struct intr_frame *f, void *addr, bool user, bool write, bo
 	/* TODO: Validate the fault */
 	/* TODO: Your code goes here */
 	if (!not_present) return false;
-
-	void *rsp;
-	if (user) {
-		rsp = f->rsp;
-	}
+	if (user) rsp = f->rsp;
 	else rsp = thread_current()->rsp;
 	if (!page && (USER_STACK - MEGA_BYTE) <= addr && addr <= USER_STACK && rsp - 8 <= addr) {
 		vm_stack_growth(addr);
 		return true;
 	}
-
 	if (write && !page->writable) return false;
-
 	return vm_do_claim_page(page);
 }
 

@@ -94,7 +94,8 @@ do_mmap (void *addr, size_t length, int writable,
 	// to return original addr
     void *original = addr;
 
-    size_t read_bytes = length > file_length(reopened_file) ? file_length(reopened_file) : length;
+    off_t file_len = file_length(reopened_file);
+    size_t read_bytes = length > file_len ? file_len : length;
     size_t zero_bytes = PGSIZE - (read_bytes % PGSIZE);
 
     while (read_bytes > 0 || zero_bytes > 0) {
@@ -131,12 +132,11 @@ do_munmap(void *addr) {
     struct thread *curr=thread_current();
     struct page *page;
     void *looking_addr=addr;
+    bool flg = false;
 
-    while(1){
+    while(!flg){
         page=spt_find_page(&curr->spt, looking_addr);
-        if(!page)break;
-        if(page->type!=VM_FILE)break;
-        bool flg=false;
+        if(!page || page->type!=VM_FILE)break;
         if(page->operations->type==VM_UNINIT){
             if(((struct load_arg*)(page->uninit.aux))->zero_bytes)flg=true;
         }
@@ -144,12 +144,8 @@ do_munmap(void *addr) {
             if(page->file.zero_bytes)flg=true;
         }
         spt_remove_page(&curr->spt, page);
-        if(page->frame!=NULL){
-            free(page->frame);
-            page->frame = NULL;
-        }
+
         looking_addr+=PGSIZE;
-        if(flg)break;
     }
 }
 
