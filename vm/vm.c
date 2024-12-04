@@ -126,7 +126,7 @@ bool spt_insert_page_help(struct page *nw, struct page *par, int dir, struct pag
 		page->l=nw->l;
 		page->r=nw->r;
 		if(par){
-			if(dir==0)par->l=page;
+			if(dir==1)par->l=page;
 			else par->r=page;
 		}
 		free(nw);
