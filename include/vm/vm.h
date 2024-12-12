@@ -55,6 +55,7 @@ struct page {
 
 	bool dead;
 	bool writable;
+	bool accessible;       /* True if the page is writable after CoW */
 	enum vm_type type;
 
 	/* Per-type data are binded into the union.
