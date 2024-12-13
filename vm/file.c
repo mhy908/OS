@@ -58,6 +58,7 @@ file_backed_swap_out (struct page *page) {
     
     bool flg=false;
 
+    lock_acquire(&page->box_lock);
 	struct list_elem *box_elem=list_begin(&page->box_list);
 	for(; box_elem!=list_end(&page->box_list); box_elem=list_next(box_elem)){
 		struct thread *th=list_entry(box_elem, struct page_box, box_elem)->th;
@@ -73,6 +74,7 @@ file_backed_swap_out (struct page *page) {
 		if(flg)pml4_set_dirty(th->pml4, page->va, false);
         pml4_clear_page(th->pml4, page->va);
 	}
+    lock_release(&page->box_lock);
 	page->frame=NULL;
 	return true;
 }
@@ -85,7 +87,6 @@ file_backed_destroy (struct page *page) {
     
     if (pml4_is_dirty(t->pml4, page->va)) {
         file_write_at(file_page->file, page->va, file_page->read_bytes, file_page->offset);
-        pml4_set_dirty(t->pml4, page->va, false);
     }
 
     if(page->frame){

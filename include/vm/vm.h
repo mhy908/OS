@@ -27,6 +27,7 @@ enum vm_type {
 #include "vm/uninit.h"
 #include "vm/anon.h"
 #include "vm/file.h"
+#include "threads/synch.h"
 #include <hash.h>
 #ifdef EFILESYS
 #include "filesys/page_cache.h"
@@ -59,6 +60,7 @@ struct page {
 	/* Your implementation */
 	int pd;
 	struct list box_list;
+	struct lock box_lock;
 	bool writable;
 	bool is_cow;
 	enum vm_type type;
@@ -108,6 +110,7 @@ struct supplemental_page_table {
 };
 
 #include "threads/thread.h"
+
 void supplemental_page_table_init (struct supplemental_page_table *spt);
 bool supplemental_page_table_copy (struct supplemental_page_table *dst,
 		struct supplemental_page_table *src);
