@@ -55,11 +55,12 @@ file_backed_swap_in (struct page *page, void *kva) {
 static bool
 file_backed_swap_out (struct page *page) {
 	struct file_page *file_page = &page->file;
-    if(pml4_is_dirty(page->th->pml4, page->va)){
+	struct thread *t = list_entry(list_begin(&page->box_list), struct page_box, box_elem)->th;
+    if(pml4_is_dirty(t->pml4, page->va)){
         file_write_at(file_page->file, page->va, file_page->read_bytes, file_page->offset);
-        pml4_set_dirty(page->th->pml4, page->va, false);
+        pml4_set_dirty(t->pml4, page->va, false);
     }
-    pml4_clear_page(page->th->pml4, page->va);
+    pml4_clear_page(t->pml4, page->va);
 	page->frame=NULL;
 	return true;
 }
@@ -68,11 +69,11 @@ file_backed_swap_out (struct page *page) {
 static void
 file_backed_destroy (struct page *page) {
 	struct file_page *file_page = &page->file;
-    uint64_t *pml4 = thread_current()->pml4;
+	struct thread *t = thread_current();
     
-    if (pml4_is_dirty(pml4, page->va)) {
+    if (pml4_is_dirty(t->pml4, page->va)) {
         file_write_at(file_page->file, page->va, file_page->read_bytes, file_page->offset);
-        pml4_set_dirty(pml4, page->va, false);
+        pml4_set_dirty(t->pml4, page->va, false);
     }
 
     if(page->frame){
@@ -148,4 +149,3 @@ do_munmap(void *addr) {
         looking_addr+=PGSIZE;
     }
 }
-

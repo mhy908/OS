@@ -75,22 +75,22 @@ vm_alloc_page_with_initializer (enum vm_type type, void *upage, bool writable,
 		 * TODO: should modify the field after calling the uninit_new. */
 		
 		struct page *page=(struct page*)malloc(sizeof(struct page));
-		//printf("key = %llu\n", page->key);
 		
 		bool (*initializer) (struct page*, enum vm_type, void *);
 		if(type==VM_ANON)initializer=anon_initializer;
 		if(type==VM_FILE)initializer=file_backed_initializer;
 		uninit_new(page, upage, init, type, aux, initializer);
 
-		/* TODO: Insert the page into the spt. */
-		//printf("Insert\n");
-		
-		page->dead=0;
-		page->key=derive_key(upage);
+		/* Initialize new fields */
+		static int next_pd = 0;
+		page->pd = next_pd++;
+		list_init(&page->box_list);
 		page->writable=writable;
+		page->is_cow = false;
 		page->type=type;
-		page->th=thread_current();
 
+		/* TODO: Insert the page into the spt. */
+		
 		return spt_insert_page(spt, page);
 	}
 err:
@@ -98,74 +98,89 @@ err:
 }
 
 //mhy908
-/* Find VA from spt and return page. On error, return NULL. */
-struct page* spt_find_page_help(struct page* nw, uint64_t tar){
-	//printf("nw = %llu tar = %llu\n", nw->key, tar);
+/* Find VA from spt and return page_box. On error, return NULL. */
+struct page_box* spt_find_page_box_help(struct page_box* nw, uint64_t tar){
 	if(nw->key==tar) {
-		//printf ("(spt_find_page_help) nw : %d\n", nw);
 		return nw->dead?NULL:nw;
 	}
 	if(nw->key<tar){
-		if(nw->r)return spt_find_page_help(nw->r, tar);
+		if(nw->r)return spt_find_page_box_help(nw->r, tar);
 		return NULL;
 	}
 	if(nw->key>tar){
-		if(nw->l)return spt_find_page_help(nw->l, tar);
+		if(nw->l)return spt_find_page_box_help(nw->l, tar);
 		return NULL;
 	}
 }
-struct page *spt_find_page(struct supplemental_page_table *spt, void *va) {
-	/* TODO: Fill this function. */
+
+struct page_box* spt_find_page_box(struct supplemental_page_table *spt, void *va) {
 	if(!spt->root)return NULL;
-	return spt_find_page_help(spt->root, derive_key(va));
+	return spt_find_page_box_help(spt->root, derive_key(va));
 }
+
+struct page *spt_find_page(struct supplemental_page_table *spt, void *va) {
+	struct page_box *box = spt_find_page_box(spt, va);
+	return box ? box->page : NULL;
+}
+
 /* Insert PAGE into spt with validation. */
-bool spt_insert_page_help(struct page *nw, struct page *par, int dir, struct page *page){
-	if(nw->key==page->key){
+bool spt_insert_page_help(struct page_box *nw, struct page_box *par, int dir, struct page_box *page_box){
+	if(nw->key==page_box->key){
 		if(!nw->dead)return false;
-		page->l=nw->l;
-		page->r=nw->r;
+		page_box->l=nw->l;
+		page_box->r=nw->r;
 		if(par){
-			if(dir==1)par->l=page;
-			else par->r=page;
+			if(dir==1)par->l=page_box;
+			else par->r=page_box;
 		}
 		free(nw);
 		return true;
 	}
-	if(nw->key<page->key){
-		if(nw->r)return spt_insert_page_help(nw->r, nw, 0, page);
-		nw->r=page;
+	if(nw->key<page_box->key){
+		if(nw->r)return spt_insert_page_help(nw->r, nw, 0, page_box);
+		nw->r=page_box;
 		return true;
 	}
-	if(nw->key>page->key){
-		if(nw->l)return spt_insert_page_help(nw->l, nw, 1, page);
-		nw->l=page;
+	if(nw->key>page_box->key){
+		if(nw->l)return spt_insert_page_help(nw->l, nw, 1, page_box);
+		nw->l=page_box;
 		return true;
 	}
 }
+
 bool spt_insert_page(struct supplemental_page_table *spt, struct page *page){
-	page->key=derive_key(page->va);
-	// printf("INSERT %llu\n", page->key);
+	struct page_box *page_box = (struct page_box*)malloc(sizeof(struct page_box));
+	page_box->key=derive_key(page->va);
+	page_box->l = NULL;
+	page_box->r = NULL;
+	page_box->page = page;
+	page_box->th = thread_current();
+	page_box->dead = false;
+	list_push_back(&page->box_list, &page_box->box_elem);
+
 	if(!spt->root){
-		spt->root=page;
+		spt->root=page_box;
 		return true;
 	}
-	if(spt->root->dead&&spt->root->key==page->key){
-		page->l=spt->root->l;
-		page->r=spt->root->r;
+	if(spt->root->dead&&spt->root->key==page_box->key){
+		page_box->l=spt->root->l;
+		page_box->r=spt->root->r;
 		free(spt->root);
-		spt->root=page;
+		spt->root=page_box;
 		return true;
 	}
-	return spt_insert_page_help(spt->root, NULL, 0, page);
+	return spt_insert_page_help(spt->root, NULL, 0, page_box);
 }
 
 void
 spt_remove_page(struct supplemental_page_table *spt UNUSED, struct page *page) {
-	if(page->frame)list_remove(&page->frame->list_elem);
-	destroy(page);
-	page->dead=true;
-	return true;
+	struct page_box *box = spt_find_page_box(spt, page->va);
+	if (box) {
+		if(page->frame)list_remove(&page->frame->list_elem);
+		list_remove(&box->box_elem);
+		destroy(page);
+		box->dead = true;
+	}
 }
 
 /* Get the struct frame, that will be evicted. */
@@ -282,40 +297,42 @@ void supplemental_page_table_init (struct supplemental_page_table *spt) {
 
 /* Copy supplemental page table from src to dst */
 
-bool page_copy_helper(struct page *p, struct supplemental_page_table *dst){
+bool page_copy_helper(struct page_box *p, struct supplemental_page_table *dst){
 	if(p->dead)return true;
-	if(p->operations->type==VM_UNINIT){
+	if(p->page->operations->type==VM_UNINIT){
 		struct load_arg* load_arg=(struct load_arg*)malloc(sizeof(struct load_arg));
 		if(!load_arg)return false;
-		load_arg->file = ((struct load_arg*)(p->uninit.aux))->file;
-    	load_arg->offset = ((struct load_arg*)(p->uninit.aux))->offset;
-    	load_arg->read_bytes = ((struct load_arg*)(p->uninit.aux))->read_bytes;
-    	load_arg->zero_bytes = ((struct load_arg*)(p->uninit.aux))->zero_bytes;
-		return vm_alloc_page_with_initializer(p->type, p->va, p->writable, lazy_load_segment, load_arg);
+		load_arg->file = ((struct load_arg*)(p->page->uninit.aux))->file;
+    	load_arg->offset = ((struct load_arg*)(p->page->uninit.aux))->offset;
+    	load_arg->read_bytes = ((struct load_arg*)(p->page->uninit.aux))->read_bytes;
+    	load_arg->zero_bytes = ((struct load_arg*)(p->page->uninit.aux))->zero_bytes;
+		return vm_alloc_page_with_initializer(p->page->type, p->page->va, p->page->writable, lazy_load_segment, load_arg);
 	}
-	if(p->operations->type==VM_ANON){
-		if(!vm_alloc_page_with_initializer(VM_ANON, p->va, p->writable, NULL, NULL))return false;
-		if(!vm_claim_page(p->va))return false;
-		struct page *cur=spt_find_page(dst, p->va);
-		memcpy(cur->va, p->frame->kva, PGSIZE);
+	if(p->page->operations->type==VM_ANON){
+		if(!vm_alloc_page_with_initializer(VM_ANON, p->page->va, p->page->writable, NULL, NULL))return false;
+		if(!vm_claim_page(p->page->va))return false;
+		struct page *cur=spt_find_page(dst, p->page->va);
+		memcpy(cur->va, p->page->frame->kva, PGSIZE);
 		return true;
 	}
-	if(p->operations->type==VM_FILE){
+	if(p->page->operations->type==VM_FILE){
 		struct load_arg* load_arg=(struct load_arg*)malloc(sizeof(struct load_arg));
 		if(!load_arg)return false;
-		load_arg->file = p->file.file;
-    	load_arg->offset = p->file.offset;
-    	load_arg->read_bytes = p->file.read_bytes;
-    	load_arg->zero_bytes = p->file.zero_bytes;
-		return vm_alloc_page_with_initializer(VM_FILE, p->va, p->writable, lazy_load_segment, load_arg);
+		load_arg->file = p->page->file.file;
+    	load_arg->offset = p->page->file.offset;
+    	load_arg->read_bytes = p->page->file.read_bytes;
+    	load_arg->zero_bytes = p->page->file.zero_bytes;
+		return vm_alloc_page_with_initializer(VM_FILE, p->page->va, p->page->writable, lazy_load_segment, load_arg);
 	}
 }
-bool page_table_copy_helper(struct page *p, struct supplemental_page_table *dst){
+
+bool page_table_copy_helper(struct page_box *p, struct supplemental_page_table *dst){
 	if(!page_copy_helper(p, dst))return false;
 	if(p->l&&!page_table_copy_helper(p->l, dst))return false;
 	if(p->r&&!page_table_copy_helper(p->r, dst))return false;
 	return true;
 }
+
 bool supplemental_page_table_copy (struct supplemental_page_table *dst,
 		struct supplemental_page_table *src) {
 	if(!src->root){
@@ -326,15 +343,21 @@ bool supplemental_page_table_copy (struct supplemental_page_table *dst,
 }
 
 /* Free the resource hold by the supplemental page table */
-void page_table_kill_helper(struct page *p){
+void page_table_kill_helper(struct page_box *p){
 	if(p->l)page_table_kill_helper(p->l);
 	if(p->r)page_table_kill_helper(p->r);
 	if(!p->dead){
-		if(p->frame)list_remove(&p->frame->list_elem);
-		vm_dealloc_page(p);
+		if(p->page->frame)list_remove(&p->page->frame->list_elem);
+		list_remove(&p->box_elem);
+		vm_dealloc_page(p->page);
 	}
-	else free(p);
+	else {
+		list_remove(&p->box_elem);
+		free(p->page);
+	}
+	free(p);
 }
+
 void supplemental_page_table_kill (struct supplemental_page_table *spt) {
 	/* TODO: Destroy all the supplemental_page_table hold by thread and
 	 * TODO: writeback all the modified contents to the storage. */
