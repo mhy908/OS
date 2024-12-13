@@ -173,12 +173,13 @@ bool spt_insert_page(struct supplemental_page_table *spt, struct page *page){
 void
 spt_remove_page(struct supplemental_page_table *spt, struct page *page) {
 	struct page_box *box = spt_find_page_box(spt, page->va);
-	if (box) {
-		if(page->frame)list_remove(&page->frame->list_elem);
+	if (box){
 		list_remove(&box->box_elem);
-		
-		if(list_size(&page->box_list)==0)vm_dealloc_page(page);
-		box->dead = true;
+		if(list_size(&page->box_list)==0){
+			if(page->frame)list_remove(&page->frame->list_elem);
+			vm_dealloc_page(page);
+		}
+		box->dead=true;
 	}
 }
 
@@ -227,19 +228,16 @@ vm_stack_growth (void *addr_) {
 }
 
 /* Handle the fault on write_protected page */
+
 static bool
 vm_handle_wp (struct page_box *page_box) {
-	//printf("Hello?? ! %d\n", page_box->page->is_cow);
 	if(!page_box->page->is_cow)return false;
-	//printf("HERE?? 2\n");
 	if(!page_box->page->frame){
 		if(!vm_do_claim_page(page_box->page))return false;
 	}
-	//printf("HERE?? 3\n");
     ASSERT(page_box->page->type!=VM_UNINIT);
     if(page_box->page->type==VM_FILE)return true;
     if(list_size(&page_box->page->box_list)==1){
-		//printf("OK\n");
 		page_box->page->writable=true;
 		page_box->page->is_cow=false;
 		return true;
@@ -249,26 +247,21 @@ vm_handle_wp (struct page_box *page_box) {
 
     list_remove(&page_box->box_elem);
     page_box->dead=true;
-    
-	//printf("HERE?? 4\n");
     if(!vm_alloc_page_with_initializer(VM_ANON, page->va, true, NULL, NULL))return false;
-	//printf("HERE?? 5\n");
     if(!vm_claim_page(page->va))return false;
-	//printf("HERE?? 6\n");
-    struct page *cur=spt_find_page(&thread_current()->spt, page->va);
-    memcpy(cur->va, page->frame->kva, PGSIZE);
+	memcpy(page->va, page->frame->kva, PGSIZE);
 
     return true;
 }
 
 bool vm_try_handle_fault_help(struct intr_frame *f, void *addr, bool user, bool write, bool not_present){
+
 	//printf("addr = %lld user = %d write = %d not_present = %d kern = %d\n", addr, user, write, not_present, is_kernel_vaddr(addr));
 
 	struct supplemental_page_table *spt = &thread_current ()->spt;
 	void *rsp;
 
 	if (user && is_kernel_vaddr(addr)){
-		//printf("????\n");
 		return false;
 	}
 
@@ -276,9 +269,15 @@ bool vm_try_handle_fault_help(struct intr_frame *f, void *addr, bool user, bool 
 
 	/* TODO: Validate the fault */
 	/* TODO: Your code goes here */
-	//printf("???? %d\n", page->writable);
-	if (write&&page_box&&!page_box->page->writable) return vm_handle_wp(page_box);
-	if (!not_present) return false;
+	if (write&&page_box&&!page_box->page->writable){
+		return vm_handle_wp(page_box);
+	}
+	/*
+	if (!not_present) {
+		printf("wtf\n");
+		return false;
+	}
+	*/
 	if (user) rsp = f->rsp;
 	else rsp = thread_current()->rsp;
 	if (!page_box && (USER_STACK - MEGA_BYTE) <= addr && addr <= USER_STACK && rsp - 8 <= addr) {
@@ -286,6 +285,12 @@ bool vm_try_handle_fault_help(struct intr_frame *f, void *addr, bool user, bool 
 		return true;
 	}
 	if(!page_box)return false;
+	if(page_box->page->frame){
+		//if(page_box->page->type==VM_ANON)printf("ANON??? %llu\n", page_box->page);
+		pml4_set_page(page_box->th->pml4, page_box->page->va, page_box->page->frame->kva, page_box->page->writable);
+		return true;
+	}
+	//printf("page_box->page = %d frame = %d\n", page_box->page, page_box->page->frame);
 	return vm_do_claim_page(page_box->page);
 }
 
@@ -327,11 +332,12 @@ static bool vm_do_claim_page (struct page *page) {
 	/* TODO: Insert page table entry to map page's VA to frame's PA. */
 
 	struct list_elem *box_elem=list_begin(&page->box_list);
+	bool ret=true;
 	for(; box_elem!=list_end(&page->box_list); box_elem=list_next(box_elem)){
 		struct thread *th=list_entry(box_elem, struct page_box, box_elem)->th;
-		if(!pml4_set_page(th->pml4, page->va, frame->kva, page->writable))return false;
+		if(!pml4_set_page(th->pml4, page->va, frame->kva, page->writable))ret=false;
 	}
-
+	if(!ret)return false;
 	return swap_in (page, frame->kva);
 }
 
@@ -350,7 +356,6 @@ bool page_copy_helper(struct page_box *p, struct supplemental_page_table *dst){
 	}
 	if(p->page->frame){
 		ASSERT(&thread_current()->spt==dst);
-		//printf("here??? %d\n", p->page->is_cow);
 		pml4_set_page(thread_current()->pml4, p->page->va, p->page->frame->kva, p->page->writable);
 	}
 	spt_insert_page(dst, p->page);
@@ -379,9 +384,11 @@ void page_table_kill_helper(struct page_box *p){
 	if(p->l)page_table_kill_helper(p->l);
 	if(p->r)page_table_kill_helper(p->r);
 	if(!p->dead){
-		if(p->page->frame)list_remove(&p->page->frame->list_elem);
 		list_remove(&p->box_elem);
-		if(list_size(&p->page->box_list)==0)vm_dealloc_page(p->page);
+		if(list_size(&p->page->box_list)==0){
+			if(p->page->frame)list_remove(&p->page->frame->list_elem);
+			vm_dealloc_page(p->page);
+		}
 	}
 	free(p);
 }

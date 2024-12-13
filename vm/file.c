@@ -85,7 +85,6 @@ file_backed_destroy (struct page *page) {
     
     if (pml4_is_dirty(t->pml4, page->va)) {
         file_write_at(file_page->file, page->va, file_page->read_bytes, file_page->offset);
-        pml4_set_dirty(t->pml4, page->va, false);
     }
 
     if(page->frame){
