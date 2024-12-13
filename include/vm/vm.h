@@ -37,6 +37,16 @@ struct thread;
 
 #define VM_TYPE(type) ((type) & 7)
 
+/* The representation of "page_box" */
+struct page_box {
+	uint64_t key;
+	struct page *l, *r;
+	struct page *page;
+	struct thread *th;
+	struct list_elem box_elem;
+	bool dead;
+};
+
 /* The representation of "page".
  * This is kind of "parent class", which has four "child class"es, which are
  * uninit_page, file_page, anon_page, and page cache (project4).
@@ -47,14 +57,10 @@ struct page {
 	struct frame *frame;   /* Back reference for frame */
 
 	/* Your implementation */
-	
-	//mhy908
-	uint64_t key;
-	struct page *l, *r;
-	struct thread *th;
-
-	bool dead;
+	int pd;
+	struct list box_list;
 	bool writable;
+	bool is_cow;
 	enum vm_type type;
 
 	/* Per-type data are binded into the union.
@@ -98,7 +104,7 @@ struct page_operations {
 
 //mhy908
 struct supplemental_page_table {
-	struct page *root;
+	struct page_box *root;
 };
 
 #include "threads/thread.h"
