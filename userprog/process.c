@@ -135,6 +135,8 @@ process_fork (const char *name, struct intr_frame *if_) {
 
 	free(fork_arg);
 
+	//printf("fork tid = %d\n", tid);
+
 	return tid;
 }
 

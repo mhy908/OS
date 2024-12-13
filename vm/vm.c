@@ -221,7 +221,7 @@ vm_stack_growth (void *addr_) {
 	void *addr = pg_round_down(addr_);
 	void *rsp = thread_current()->rsp;
 	for (; addr < rsp; addr += PGSIZE) {
-		if (vm_alloc_page(VM_ANON, addr, true) && vm_claim_page(addr)) memset(addr, 0, PGSIZE);
+		if (vm_alloc_page_with_initializer(VM_ANON, addr, true, NULL, NULL) && vm_claim_page(addr)) memset(addr, 0, PGSIZE);
 		else break;
 	}
 }
@@ -229,14 +229,17 @@ vm_stack_growth (void *addr_) {
 /* Handle the fault on write_protected page */
 static bool
 vm_handle_wp (struct page_box *page_box) {
-	printf("Hello??\n");
+	//printf("Hello?? ! %d\n", page_box->page->is_cow);
 	if(!page_box->page->is_cow)return false;
+	//printf("HERE?? 2\n");
 	if(!page_box->page->frame){
 		if(!vm_do_claim_page(page_box->page))return false;
 	}
+	//printf("HERE?? 3\n");
     ASSERT(page_box->page->type!=VM_UNINIT);
-    if(VM_FILE)return true;
+    if(page_box->page->type==VM_FILE)return true;
     if(list_size(&page_box->page->box_list)==1){
+		//printf("OK\n");
 		page_box->page->writable=true;
 		page_box->page->is_cow=false;
 		return true;
@@ -247,22 +250,21 @@ vm_handle_wp (struct page_box *page_box) {
     list_remove(&page_box->box_elem);
     page_box->dead=true;
     
-    if(!vm_alloc_page_with_initializer(VM_ANON, page->va, page->writable, NULL, NULL))return false;
+	//printf("HERE?? 4\n");
+    if(!vm_alloc_page_with_initializer(VM_ANON, page->va, true, NULL, NULL))return false;
+	//printf("HERE?? 5\n");
     if(!vm_claim_page(page->va))return false;
+	//printf("HERE?? 6\n");
     struct page *cur=spt_find_page(&thread_current()->spt, page->va);
     memcpy(cur->va, page->frame->kva, PGSIZE);
+
     return true;
 }
 
-/* Return true on success */
-bool
-vm_try_handle_fault (struct intr_frame *f, void *addr, bool user, bool write, bool not_present) {
-
-	//printf("addr = %lld user = %d write = %d not_present = %d\n", addr, user, write, not_present);
+bool vm_try_handle_fault_help(struct intr_frame *f, void *addr, bool user, bool write, bool not_present){
+	//printf("addr = %lld user = %d write = %d not_present = %d kern = %d\n", addr, user, write, not_present, is_kernel_vaddr(addr));
 
 	struct supplemental_page_table *spt = &thread_current ()->spt;
-	struct page_box *page_box = spt_find_page_box(spt, addr);
-	struct page *page = page_box->page;
 	void *rsp;
 
 	if (user && is_kernel_vaddr(addr)){
@@ -270,17 +272,29 @@ vm_try_handle_fault (struct intr_frame *f, void *addr, bool user, bool write, bo
 		return false;
 	}
 
+	struct page_box *page_box = spt_find_page_box(spt, addr);
+
 	/* TODO: Validate the fault */
 	/* TODO: Your code goes here */
-	if (write && !page->writable) return vm_handle_wp(page_box);
+	//printf("???? %d\n", page->writable);
+	if (write&&page_box&&!page_box->page->writable) return vm_handle_wp(page_box);
 	if (!not_present) return false;
 	if (user) rsp = f->rsp;
 	else rsp = thread_current()->rsp;
-	if (!page && (USER_STACK - MEGA_BYTE) <= addr && addr <= USER_STACK && rsp - 8 <= addr) {
+	if (!page_box && (USER_STACK - MEGA_BYTE) <= addr && addr <= USER_STACK && rsp - 8 <= addr) {
 		vm_stack_growth(addr);
 		return true;
 	}
-	return vm_do_claim_page(page);
+	if(!page_box)return false;
+	return vm_do_claim_page(page_box->page);
+}
+
+/* Return true on success */
+bool
+vm_try_handle_fault (struct intr_frame *f, void *addr, bool user, bool write, bool not_present) {
+	bool ret=vm_try_handle_fault_help(f, addr, user, write, not_present);
+	//printf("?? %d\n", ret);
+	return ret;
 }
 
 /* Free the page.
@@ -330,12 +344,17 @@ void supplemental_page_table_init (struct supplemental_page_table *spt) {
 
 bool page_copy_helper(struct page_box *p, struct supplemental_page_table *dst){
 	if(p->dead)return true;
+	if(!p->page->is_cow){
+		p->page->is_cow=p->page->writable;
+		p->page->writable=false;
+	}
 	if(p->page->frame){
+		ASSERT(&thread_current()->spt==dst);
+		//printf("here??? %d\n", p->page->is_cow);
 		pml4_set_page(thread_current()->pml4, p->page->va, p->page->frame->kva, p->page->writable);
 	}
-	p->page->is_cow=p->page->writable;
-	p->page->writable=false;
 	spt_insert_page(dst, p->page);
+	//printf("?? %d %d %d\n", list_size(&p->page->box_list), p->page->is_cow, p->page->writable);
 	return true;
 }
 

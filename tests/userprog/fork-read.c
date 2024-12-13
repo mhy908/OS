@@ -19,7 +19,7 @@ test_main (void)
   CHECK ((handle = open ("sample.txt")) > 1, "open \"sample.txt\"");
   buffer = get_boundary_area () - sizeof sample / 2;
   byte_cnt = read (handle, buffer, 20);
-  
+
   if ((pid = fork("child"))){
     wait (pid);
 
@@ -39,6 +39,7 @@ test_main (void)
     msg ("child run");
 
     byte_cnt = read (handle, buffer + 20, sizeof sample - 21);
+
     if (byte_cnt != sizeof sample - 21)
       fail ("read() returned %d instead of %zu", byte_cnt, sizeof sample - 21);
     else if (strcmp (sample, buffer)) 

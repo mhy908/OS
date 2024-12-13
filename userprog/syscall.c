@@ -54,7 +54,7 @@ bool validate_pointer(void *p, size_t size, bool writable){
    bool ret=true;
    for(; ptr1<=ptr2; ptr1+=PGSIZE){
       	struct page *p=spt_find_page(spt, ptr1);
-     	if(p==NULL||(writable&&!p->writable)){
+     	if(p==NULL||(writable&&(!p->writable&&!p->is_cow))){
       	   	ret=false;
        	 	break;
       	}
@@ -229,7 +229,6 @@ int read (int fd, void *buffer, unsigned length) {
 
 	int ret=-1;
 	if(!validate_pointer(buffer, length, true))exit(-1);
-
 	lock_acquire(&file_lock);
 	
 	char *buf=(char*)buffer;

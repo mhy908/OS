@@ -9,10 +9,12 @@ test_main (void)
 {
   int pid;
 
-  if ((pid = fork("child"))){
+  if (pid = fork("child")){
+    //msg("why not here");
     int status = wait (pid);
     msg ("Parent: child exit status is %d", status);
   } else {
+    //msg("why not here22");
     msg ("child run");
     exit(81);
   }
