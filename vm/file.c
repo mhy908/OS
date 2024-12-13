@@ -55,12 +55,24 @@ file_backed_swap_in (struct page *page, void *kva) {
 static bool
 file_backed_swap_out (struct page *page) {
 	struct file_page *file_page = &page->file;
-	struct thread *t = list_entry(list_begin(&page->box_list), struct page_box, box_elem)->th;
-    if(pml4_is_dirty(t->pml4, page->va)){
+    
+    bool flg=false;
+
+	struct list_elem *box_elem=list_begin(&page->box_list);
+	for(; box_elem!=list_end(&page->box_list); box_elem=list_next(box_elem)){
+		struct thread *th=list_entry(box_elem, struct page_box, box_elem)->th;
+		if(pml4_is_dirty(th->pml4, page->va))flg=true;
+	}
+    if(flg){
         file_write_at(file_page->file, page->va, file_page->read_bytes, file_page->offset);
-        pml4_set_dirty(t->pml4, page->va, false);
     }
-    pml4_clear_page(t->pml4, page->va);
+
+    box_elem=list_begin(&page->box_list);
+	for(; box_elem!=list_end(&page->box_list); box_elem=list_next(box_elem)){
+		struct thread *th=list_entry(box_elem, struct page_box, box_elem)->th;
+		if(flg)pml4_set_dirty(th->pml4, page->va, false);
+        pml4_clear_page(th->pml4, page->va);
+	}
 	page->frame=NULL;
 	return true;
 }

@@ -40,7 +40,7 @@ struct thread;
 /* The representation of "page_box" */
 struct page_box {
 	uint64_t key;
-	struct page *l, *r;
+	struct page_box *l, *r;
 	struct page *page;
 	struct thread *th;
 	struct list_elem box_elem;
