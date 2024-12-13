@@ -83,6 +83,7 @@ vm_alloc_page_with_initializer (enum vm_type type, void *upage, bool writable,
 
 		/* Initialize new fields */
 		list_init(&page->box_list);
+		lock_init(&page->box_lock);
 		page->writable=writable;
 		page->is_cow=false;
 		page->type=type;
@@ -154,7 +155,9 @@ bool spt_insert_page(struct supplemental_page_table *spt, struct page *page){
 	page_box->page = page;
 	page_box->th = thread_current();
 	page_box->dead = false;
+	lock_acquire(&page->box_lock);
 	list_push_back(&page->box_list, &page_box->box_elem);
+	lock_release(&page->box_lock);
 
 	if(!spt->root){
 		spt->root=page_box;
@@ -174,11 +177,14 @@ void
 spt_remove_page(struct supplemental_page_table *spt, struct page *page) {
 	struct page_box *box = spt_find_page_box(spt, page->va);
 	if (box){
+		lock_acquire(&page->box_lock);
 		list_remove(&box->box_elem);
 		if(list_size(&page->box_list)==0){
 			if(page->frame)list_remove(&page->frame->list_elem);
+			lock_release(&page->box_lock);
 			vm_dealloc_page(page);
 		}
+		else lock_release(&page->box_lock);
 		box->dead=true;
 	}
 }
@@ -384,11 +390,14 @@ void page_table_kill_helper(struct page_box *p){
 	if(p->l)page_table_kill_helper(p->l);
 	if(p->r)page_table_kill_helper(p->r);
 	if(!p->dead){
+		lock_acquire(&p->page->box_lock);
 		list_remove(&p->box_elem);
 		if(list_size(&p->page->box_list)==0){
 			if(p->page->frame)list_remove(&p->page->frame->list_elem);
+			lock_release(&p->page->box_lock);
 			vm_dealloc_page(p->page);
 		}
+		else lock_release(&p->page->box_lock);
 	}
 	free(p);
 }

@@ -56,11 +56,13 @@ anon_swap_out (struct page *page) {
 	for(int i=0; i<8; i++){
 		disk_write(swap_disk, 8*index+i, page->frame->kva+512*i);
 	}
+	lock_acquire(&page->box_lock);
 	struct list_elem *box_elem=list_begin(&page->box_list);
 	for(; box_elem!=list_end(&page->box_list); box_elem=list_next(box_elem)){
 		struct thread *th=list_entry(box_elem, struct page_box, box_elem)->th;
 		pml4_clear_page(th->pml4, page->va);
 	}
+	lock_release(&page->box_lock);
 	page->frame=NULL;
 	return true;
 }
